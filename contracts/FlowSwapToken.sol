@@ -17,6 +17,7 @@ import {IERC777Sender} from "@openzeppelin/contracts/token/ERC777/IERC777Sender.
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IFlowSwap} from "./interfaces/IFlowSwap.sol";
 
+
 contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
     using SafeMath for uint256;
     using SafeCast for uint256;
@@ -68,8 +69,7 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         string calldata s,
         address host
     )
-        external
-        override
+        external override
         initializer // OpenZeppelin Initializable
     {
         _underlyingToken = underlyingToken;

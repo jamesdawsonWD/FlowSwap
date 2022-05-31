@@ -5,7 +5,7 @@ import {
     ISuperfluid,
     ISuperAgreement,
     SuperToken
-} from "../superfluid/SuperToken.sol";
+} from "@superfluid-finance/ethereum-contracts/contracts/superfluid/SuperToken.sol";
 
 contract SuperTokenStorageLayoutTester is SuperToken {
 

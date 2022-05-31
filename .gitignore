@@ -9,3 +9,5 @@ artifacts
 
 frontend
 botContracts
+
+typechain-types

@@ -4,9 +4,9 @@ pragma solidity 0.8.13;
 import {
     Superfluid,
     ISuperApp
-} from "../superfluid/Superfluid.sol";
+} from "@superfluid-finance/ethereum-contracts/contracts/superfluid/Superfluid.sol";
 
-import { CallUtils } from "../libs/CallUtils.sol";
+import { CallUtils } from "@superfluid-finance/ethereum-contracts/contracts/libs/CallUtils.sol";
 
 
 contract SuperfluidUpgradabilityTester is Superfluid {

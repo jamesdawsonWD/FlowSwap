@@ -5,6 +5,8 @@ interface IFlowSwap {
     struct User {
         int96 flowRate;
         uint256 startPoint;
+        address from;
+        uint256 deposit;
     }
 
     struct Reciept {
@@ -32,13 +34,33 @@ interface IFlowSwap {
 
     function totalPoints() external view returns (uint256);
 
-    function getPriceCumulativeLast(address token) external view returns (uint256 priceCumulativeLast);
+    function getPriceCumulativeLast(address token)
+        external
+        view
+        returns (uint256 priceCumulativeLast);
 
     function getNow() external view returns (uint256);
 
     event Mint(address indexed sender, uint256 amount0, uint256 amount1);
-    event Created(address indexed sender, int96 token0FlowRate, int96 token1FlowRate, uint256 startPoint);
-    event Burn(address indexed sender, uint256 amount0, uint256 amount1, address indexed to);
-    event Swap(address indexed sender, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out, address indexed to);
+    event Created(
+        address indexed sender,
+        int96 token0FlowRate,
+        int96 token1FlowRate,
+        uint256 startPoint
+    );
+    event Burn(
+        address indexed sender,
+        uint256 amount0,
+        uint256 amount1,
+        address indexed to
+    );
+    event Swap(
+        address indexed sender,
+        uint256 amount0In,
+        uint256 amount1In,
+        uint256 amount0Out,
+        uint256 amount1Out,
+        address indexed to
+    );
     event Sync(uint112 reserve0, uint112 reserve1);
 }

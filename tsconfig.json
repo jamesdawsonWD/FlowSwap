@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM"], 
+    "target": "es2018",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "outDir": "dist",
+    "resolveJsonModule": true,
+    "types": [
+      "chai",
+      "mocha"
+    ]
+  },
+  "include": [
+    "./scripts",
+    "./test",
+    "./typechain-types",
+    "./scripts"
+  ],
+  "files": [
+    "./hardhat.config.ts"
+  ],
+}
