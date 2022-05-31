@@ -3,7 +3,7 @@ pragma solidity 0.8.13;
 
 import {UUPSProxiable} from "@superfluid-finance/ethereum-contracts/contracts/upgradability/UUPSProxiable.sol";
 
-import {ISuperfluid, ISuperfluidGovernance, ISuperToken, ISuperAgreement, IERC20, IERC777, TokenInfo} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
+import {ISuperfluid, ISuperfluidGovernance, ISuperToken, ISuperAgreement, ISuperToken, IERC777, TokenInfo} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 
 import {ERC777Helper} from "@superfluid-finance/ethereum-contracts/contracts/libs/ERC777Helper.sol";
 import {IFlowToken} from "./interfaces/IFlowToken.sol";
@@ -22,7 +22,7 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
     using SafeCast for uint256;
     using Address for address;
     using ERC777Helper for ERC777Helper.Operators;
-    using SafeERC20 for IERC20;
+    using SafeERC20 for ISuperToken;
 
     uint8 private constant _STANDARD_DECIMALS = 18;
 
@@ -31,8 +31,7 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
        variables are added APPEND-ONLY. Re-ordering variables can
        permanently BREAK the deployed proxy contract. */
 
-    /// @dev The underlying ERC20 token
-    IERC20 internal _underlyingToken;
+
 
     /// @dev Decimals of the underlying token
     uint8 internal _underlyingDecimals;
@@ -63,7 +62,7 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
     uint256 internal _reserve31;
 
     function initialize(
-        IERC20 underlyingToken,
+        ISuperToken underlyingToken,
         uint8 underlyingDecimals,
         string calldata n,
         string calldata s,
@@ -79,7 +78,7 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         _name = n;
         _symbol = s;
 
-        setHost(IFlowSwap(host));
+        _host = IFlowSwap(host);
 
         // register interfaces
         ERC777Helper.register(address(this));
@@ -194,7 +193,7 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
      *
      * See {IERC777Sender} and {IERC777Recipient}.
      *
-     * Emits {Minted} and {IERC20-Transfer} events.
+     * Emits {Minted} and {ISuperToken-Transfer} events.
      *
      * Requirements
      *
@@ -330,9 +329,8 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
 
     function balanceOf(address account) public view override returns (uint256 balance) {
         // solhint-disable-next-line not-rely-on-time
-        // (int256 availableBalance, , , ) = super.realtimeBalanceOfNow(account);
-        // return availableBalance < 0 ? 0 : uint256(availableBalance);
-        return 1;
+        int256 availableBalance = super.realtimeBalanceOfNow(account);
+        return availableBalance < 0 ? 0 : uint256(availableBalance);
     }
 
     function transfer(address recipient, uint256 amount) public override returns (bool) {
@@ -382,8 +380,11 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         _send(msg.sender, msg.sender, recipient, amount, data, "", true);
     }
 
-    function burn(uint256 amount, bytes calldata data) external override {
-        _downgrade(msg.sender, msg.sender, amount, data, "");
+    function burn(
+        uint256 amount,
+        bytes calldata data
+    ) external override onlyHost {
+        _burn(msg.sender, msg.sender, amount, data, "");
     }
 
     function isOperatorFor(address operator, address tokenHolder) external view override returns (bool) {
@@ -426,7 +427,7 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
     ) external override {
         address operator = msg.sender;
         require(_operators.isOperatorFor(operator, account), "SuperToken: caller is not an operator for holder");
-        _downgrade(operator, account, amount, data, operatorData);
+        // _downgrade(operator, account, amount, data, operatorData);
     }
 
     function _setupDefaultOperators(address[] memory operators) internal {
@@ -485,110 +486,7 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         _transferFrom(msg.sender, msg.sender, recipient, balanceOf(msg.sender));
     }
 
-    /**************************************************************************
-     * ERC20 wrapping
-     *************************************************************************/
 
-    /// @dev ISuperfluidGovernance.getUnderlyingToken implementation
-    function getUnderlyingToken() external view override returns (address) {
-        return address(_underlyingToken);
-    }
-
-    /// @dev ISuperToken.upgrade implementation
-    function upgrade(uint256 amount) external override {
-        _upgrade(msg.sender, msg.sender, msg.sender, amount, "", "");
-    }
-
-    /// @dev ISuperToken.upgradeTo implementation
-    function upgradeTo(
-        address to,
-        uint256 amount,
-        bytes calldata data
-    ) external override {
-        _upgrade(msg.sender, msg.sender, to, amount, "", data);
-    }
-
-    /// @dev ISuperToken.downgrade implementation
-    function downgrade(uint256 amount) external override {
-        _downgrade(msg.sender, msg.sender, amount, "", "");
-    }
-
-    function _upgrade(
-        address operator,
-        address account,
-        address to,
-        uint256 amount,
-        bytes memory userData,
-        bytes memory operatorData
-    ) private {
-        require(address(_underlyingToken) != address(0), "SuperToken: no underlying token");
-
-        (uint256 underlyingAmount, uint256 adjustedAmount) = _toUnderlyingAmount(amount);
-
-        uint256 amountBefore = _underlyingToken.balanceOf(address(this));
-        _underlyingToken.safeTransferFrom(account, address(this), underlyingAmount);
-        uint256 amountAfter = _underlyingToken.balanceOf(address(this));
-        uint256 actualUpgradedAmount = amountAfter - amountBefore;
-        require(underlyingAmount == actualUpgradedAmount, "SuperToken: inflationary/deflationary tokens not supported");
-
-        _mint(
-            operator,
-            to,
-            adjustedAmount,
-            // if `to` is diffferent from `account`, we requireReceptionAck
-            account != to,
-            userData,
-            operatorData
-        );
-
-        emit TokenUpgraded(to, adjustedAmount);
-    }
-
-    function _downgrade(
-        address operator,
-        address account,
-        uint256 amount,
-        bytes memory data,
-        bytes memory operatorData
-    ) private {
-        require(address(_underlyingToken) != address(0), "SuperToken: no underlying token");
-
-        (uint256 underlyingAmount, uint256 adjustedAmount) = _toUnderlyingAmount(amount);
-
-        // _burn will check the (actual) amount availability again
-        _burn(operator, account, adjustedAmount, data, operatorData);
-
-        uint256 amountBefore = _underlyingToken.balanceOf(address(this));
-        _underlyingToken.safeTransfer(account, underlyingAmount);
-        uint256 amountAfter = _underlyingToken.balanceOf(address(this));
-        uint256 actualDowngradedAmount = amountBefore - amountAfter;
-        require(underlyingAmount == actualDowngradedAmount, "SuperToken: inflationary/deflationary tokens not supported");
-
-        emit TokenDowngraded(account, adjustedAmount);
-    }
-
-    /**
-     * @dev Handle decimal differences between underlying token and super token
-     */
-    function _toUnderlyingAmount(uint256 amount) private view returns (uint256 underlyingAmount, uint256 adjustedAmount) {
-        uint256 factor;
-        if (_underlyingDecimals < _STANDARD_DECIMALS) {
-            // if underlying has less decimals
-            // one can upgrade less "granualar" amount of tokens
-            factor = 10**(_STANDARD_DECIMALS - _underlyingDecimals);
-            underlyingAmount = amount / factor;
-            // remove precision errors
-            adjustedAmount = underlyingAmount * factor;
-        } else if (_underlyingDecimals > _STANDARD_DECIMALS) {
-            // if underlying has more decimals
-            // one can upgrade more "granualar" amount of tokens
-            factor = 10**(_underlyingDecimals - _STANDARD_DECIMALS);
-            underlyingAmount = amount * factor;
-            adjustedAmount = amount;
-        } else {
-            underlyingAmount = adjustedAmount = amount;
-        }
-    }
 
     /**************************************************************************
      * Superfluid Batch Operations
@@ -612,11 +510,11 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
     }
 
     function operationUpgrade(address account, uint256 amount) external override onlyHost {
-        _upgrade(msg.sender, account, account, amount, "", "");
+        // _upgrade(msg.sender, account, account, amount, "", "");
     }
 
     function operationDowngrade(address account, uint256 amount) external override onlyHost {
-        _downgrade(msg.sender, account, amount, "", "");
+        // _downgrade(msg.sender, account, amount, "", "");
     }
 
     /**************************************************************************

@@ -1,9 +1,9 @@
-pragma solidity =0.5.16;
+pragma solidity 0.8.13;
 
 import "./interfaces/IFlowSwapERC20.sol";
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
-contract UniswapV2ERC20 is IFlowSwapERC20 {
+contract FlowSwapERC20 is IFlowSwapERC20 {
     using SafeMath for uint256;
 
     string public constant name = "Uniswap V2";
@@ -18,13 +18,11 @@ contract UniswapV2ERC20 is IFlowSwapERC20 {
     bytes32 public constant PERMIT_TYPEHASH = 0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
     mapping(address => uint256) public nonces;
 
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-    event Transfer(address indexed from, address indexed to, uint256 value);
 
     constructor() public {
         uint256 chainId;
         assembly {
-            chainId := chainid
+            chainId := chainid()
         }
         DOMAIN_SEPARATOR = keccak256(
             abi.encode(
@@ -83,7 +81,7 @@ contract UniswapV2ERC20 is IFlowSwapERC20 {
         address to,
         uint256 value
     ) external returns (bool) {
-        if (allowance[from][msg.sender] != uint256(-1)) {
+        if (allowance[from][msg.sender] != type(uint256).max) {
             allowance[from][msg.sender] = allowance[from][msg.sender].sub(value);
         }
         _transfer(from, to, value);

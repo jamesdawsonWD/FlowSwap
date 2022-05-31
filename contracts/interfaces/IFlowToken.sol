@@ -15,6 +15,7 @@ interface IFlowToken {
      */
     function getHost() external view returns (address host);
 
+    function getUnderlyingToken() external view returns (address);
     /**************************************************************************
      * Real-time balance functions
      *************************************************************************/
@@ -25,7 +26,8 @@ interface IFlowToken {
      * @param timestamp Time of balance
      * @return availableBalance Real-time balance
      */
-    function realtimeBalanceOf(address account, uint256 timestamp) external view returns (int256 availableBalance);
+    function realtimeBalanceOf(address account, uint256 timestamp, uint256 priceCumulativeLast) external view returns (int256 availableBalance);
+    function settleBalance(address account) external returns (uint256);
 
     /**
      * @notice Calculate the realtime balance given the current host.getNow() value
