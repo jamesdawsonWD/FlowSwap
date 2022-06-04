@@ -1,22 +1,21 @@
 // SPDX-License-Identifier: AGPLv3
 pragma solidity 0.8.13;
 
-import {UUPSProxiable} from "@superfluid-finance/ethereum-contracts/contracts/upgradability/UUPSProxiable.sol";
+import {UUPSProxiable} from '@superfluid-finance/ethereum-contracts/contracts/upgradability/UUPSProxiable.sol';
 
-import {ISuperfluid, ISuperfluidGovernance, ISuperToken, ISuperAgreement, ISuperToken, IERC777, TokenInfo} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
+import {ISuperfluid, ISuperfluidGovernance, ISuperToken, ISuperAgreement, ISuperToken, IERC777, TokenInfo} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol';
 
-import {ERC777Helper} from "@superfluid-finance/ethereum-contracts/contracts/libs/ERC777Helper.sol";
-import {IFlowToken} from "./interfaces/IFlowToken.sol";
-import {IFlowSwapToken} from "./interfaces/IFlowSwapToken.sol";
-import {FlowToken} from "./FlowToken.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {IERC777Recipient} from "@openzeppelin/contracts/token/ERC777/IERC777Recipient.sol";
-import {IERC777Sender} from "@openzeppelin/contracts/token/ERC777/IERC777Sender.sol";
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {IFlowSwap} from "./interfaces/IFlowSwap.sol";
-
+import {ERC777Helper} from '@superfluid-finance/ethereum-contracts/contracts/libs/ERC777Helper.sol';
+import {IFlowToken} from './interfaces/IFlowToken.sol';
+import {IFlowSwapToken} from './interfaces/IFlowSwapToken.sol';
+import {FlowToken} from './FlowToken.sol';
+import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
+import {SafeMath} from '@openzeppelin/contracts/utils/math/SafeMath.sol';
+import {SafeCast} from '@openzeppelin/contracts/utils/math/SafeCast.sol';
+import {IERC777Recipient} from '@openzeppelin/contracts/token/ERC777/IERC777Recipient.sol';
+import {IERC777Sender} from '@openzeppelin/contracts/token/ERC777/IERC777Sender.sol';
+import {Address} from '@openzeppelin/contracts/utils/Address.sol';
+import {IFlowSwap} from './interfaces/IFlowSwap.sol';
 
 contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
     using SafeMath for uint256;
@@ -31,8 +30,6 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
        Always double-check that new
        variables are added APPEND-ONLY. Re-ordering variables can
        permanently BREAK the deployed proxy contract. */
-
-
 
     /// @dev Decimals of the underlying token
     uint8 internal _underlyingDecimals;
@@ -68,10 +65,7 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         string calldata n,
         string calldata s,
         address host
-    )
-        external override
-        initializer // OpenZeppelin Initializable
-    {
+    ) external override {
         _underlyingToken = underlyingToken;
         _underlyingDecimals = underlyingDecimals;
 
@@ -82,14 +76,22 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
 
         // register interfaces
         ERC777Helper.register(address(this));
+
+        emit FlowSwapTokenCreated(host, address(underlyingToken));
     }
 
     function proxiableUUID() public pure override returns (bytes32) {
-        return keccak256("org.superfluid-finance.contracts.SuperToken.implementation");
+        return
+            keccak256(
+                'org.superfluid-finance.contracts.SuperToken.implementation'
+            );
     }
 
     function updateCode(address newAddress) external override {
-        require(msg.sender == address(_host), "SuperToken: only host can update code");
+        require(
+            msg.sender == address(_host),
+            'SuperToken: only host can update code'
+        );
         UUPSProxiable._updateCodeAddress(newAddress);
     }
 
@@ -127,15 +129,25 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         address recipient,
         uint256 amount
     ) internal returns (bool) {
-        require(holder != address(0), "SuperToken: transfer from zero address");
-        require(recipient != address(0), "SuperToken: transfer to zero address");
+        require(holder != address(0), 'SuperToken: transfer from zero address');
+        require(
+            recipient != address(0),
+            'SuperToken: transfer to zero address'
+        );
 
         address operator = msg.sender;
 
-        _move(operator, holder, recipient, amount, "", "");
+        _move(operator, holder, recipient, amount, '', '');
 
         if (spender != holder) {
-            _approve(holder, spender, _allowances[holder][spender].sub(amount, "SuperToken: transfer amount exceeds allowance"));
+            _approve(
+                holder,
+                spender,
+                _allowances[holder][spender].sub(
+                    amount,
+                    'SuperToken: transfer amount exceeds allowance'
+                )
+            );
         }
 
         return true;
@@ -160,14 +172,22 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         bytes memory operatorData,
         bool requireReceptionAck
     ) private {
-        require(from != address(0), "SuperToken: transfer from zero address");
-        require(to != address(0), "SuperToken: transfer to zero address");
+        require(from != address(0), 'SuperToken: transfer from zero address');
+        require(to != address(0), 'SuperToken: transfer to zero address');
 
         _callTokensToSend(operator, from, to, amount, userData, operatorData);
 
         _move(operator, from, to, amount, userData, operatorData);
 
-        _callTokensReceived(operator, from, to, amount, userData, operatorData, requireReceptionAck);
+        _callTokensReceived(
+            operator,
+            from,
+            to,
+            amount,
+            userData,
+            operatorData,
+            requireReceptionAck
+        );
     }
 
     function _move(
@@ -209,11 +229,19 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         bytes memory userData,
         bytes memory operatorData
     ) internal {
-        require(account != address(0), "SuperToken: mint to zero address");
+        require(account != address(0), 'SuperToken: mint to zero address');
 
         FlowToken._mint(account, amount);
 
-        _callTokensReceived(operator, address(0), account, amount, userData, operatorData, requireReceptionAck);
+        _callTokensReceived(
+            operator,
+            address(0),
+            account,
+            amount,
+            userData,
+            operatorData,
+            requireReceptionAck
+        );
 
         emit Minted(operator, account, amount, userData, operatorData);
         emit Transfer(address(0), account, amount);
@@ -233,9 +261,16 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         bytes memory userData,
         bytes memory operatorData
     ) internal {
-        require(from != address(0), "SuperToken: burn from zero address");
+        require(from != address(0), 'SuperToken: burn from zero address');
 
-        _callTokensToSend(operator, from, address(0), amount, userData, operatorData);
+        _callTokensToSend(
+            operator,
+            from,
+            address(0),
+            amount,
+            userData,
+            operatorData
+        );
 
         FlowToken._burn(from, amount);
 
@@ -261,8 +296,8 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         address spender,
         uint256 amount
     ) internal {
-        require(account != address(0), "SuperToken: approve from zero address");
-        require(spender != address(0), "SuperToken: approve to zero address");
+        require(account != address(0), 'SuperToken: approve from zero address');
+        require(spender != address(0), 'SuperToken: approve to zero address');
 
         _allowances[account][spender] = amount;
         emit Approval(account, spender, amount);
@@ -285,9 +320,21 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         bytes memory userData,
         bytes memory operatorData
     ) private {
-        address implementer = ERC777Helper._ERC1820_REGISTRY.getInterfaceImplementer(from, ERC777Helper._TOKENS_SENDER_INTERFACE_HASH);
+        address implementer = ERC777Helper
+            ._ERC1820_REGISTRY
+            .getInterfaceImplementer(
+                from,
+                ERC777Helper._TOKENS_SENDER_INTERFACE_HASH
+            );
         if (implementer != address(0)) {
-            IERC777Sender(implementer).tokensToSend(operator, from, to, amount, userData, operatorData);
+            IERC777Sender(implementer).tokensToSend(
+                operator,
+                from,
+                to,
+                amount,
+                userData,
+                operatorData
+            );
         }
     }
 
@@ -311,11 +358,26 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         bytes memory operatorData,
         bool requireReceptionAck
     ) private {
-        address implementer = ERC777Helper._ERC1820_REGISTRY.getInterfaceImplementer(to, ERC777Helper._TOKENS_RECIPIENT_INTERFACE_HASH);
+        address implementer = ERC777Helper
+            ._ERC1820_REGISTRY
+            .getInterfaceImplementer(
+                to,
+                ERC777Helper._TOKENS_RECIPIENT_INTERFACE_HASH
+            );
         if (implementer != address(0)) {
-            IERC777Recipient(implementer).tokensReceived(operator, from, to, amount, userData, operatorData);
+            IERC777Recipient(implementer).tokensReceived(
+                operator,
+                from,
+                to,
+                amount,
+                userData,
+                operatorData
+            );
         } else if (requireReceptionAck) {
-            require(!to.isContract(), "SuperToken: not an ERC777TokensRecipient");
+            require(
+                !to.isContract(),
+                'SuperToken: not an ERC777TokensRecipient'
+            );
         }
     }
 
@@ -327,21 +389,39 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         return _totalSupply;
     }
 
-    function balanceOf(address account) public view override returns (uint256 balance) {
+    function balanceOf(address account)
+        public
+        view
+        override
+        returns (uint256 balance)
+    {
         // solhint-disable-next-line not-rely-on-time
         int256 availableBalance = super.realtimeBalanceOfNow(account);
         return availableBalance < 0 ? 0 : uint256(availableBalance);
     }
 
-    function transfer(address recipient, uint256 amount) public override returns (bool) {
+    function transfer(address recipient, uint256 amount)
+        public
+        override
+        returns (bool)
+    {
         return _transferFrom(msg.sender, msg.sender, recipient, amount);
     }
 
-    function allowance(address account, address spender) public view override returns (uint256) {
+    function allowance(address account, address spender)
+        public
+        view
+        override
+        returns (uint256)
+    {
         return _allowances[account][spender];
     }
 
-    function approve(address spender, uint256 amount) public override returns (bool) {
+    function approve(address spender, uint256 amount)
+        public
+        override
+        returns (bool)
+    {
         _approve(msg.sender, spender, amount);
         return true;
     }
@@ -354,13 +434,32 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         return _transferFrom(msg.sender, holder, recipient, amount);
     }
 
-    function increaseAllowance(address spender, uint256 addedValue) public override returns (bool) {
-        _approve(msg.sender, spender, _allowances[msg.sender][spender] + addedValue);
+    function increaseAllowance(address spender, uint256 addedValue)
+        public
+        override
+        returns (bool)
+    {
+        _approve(
+            msg.sender,
+            spender,
+            _allowances[msg.sender][spender] + addedValue
+        );
         return true;
     }
 
-    function decreaseAllowance(address spender, uint256 subtractedValue) public override returns (bool) {
-        _approve(msg.sender, spender, _allowances[msg.sender][spender].sub(subtractedValue, "SuperToken: decreased allowance below zero"));
+    function decreaseAllowance(address spender, uint256 subtractedValue)
+        public
+        override
+        returns (bool)
+    {
+        _approve(
+            msg.sender,
+            spender,
+            _allowances[msg.sender][spender].sub(
+                subtractedValue,
+                'SuperToken: decreased allowance below zero'
+            )
+        );
         return true;
     }
 
@@ -377,17 +476,23 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         uint256 amount,
         bytes calldata data
     ) external override {
-        _send(msg.sender, msg.sender, recipient, amount, data, "", true);
+        _send(msg.sender, msg.sender, recipient, amount, data, '', true);
     }
 
-    function burn(
-        uint256 amount,
-        bytes calldata data
-    ) external override onlyHost {
-        _burn(msg.sender, msg.sender, amount, data, "");
+    function burn(uint256 amount, bytes calldata data)
+        external
+        override
+        onlyHost
+    {
+        _burn(msg.sender, msg.sender, amount, data, '');
     }
 
-    function isOperatorFor(address operator, address tokenHolder) external view override returns (bool) {
+    function isOperatorFor(address operator, address tokenHolder)
+        external
+        view
+        override
+        returns (bool)
+    {
         return _operators.isOperatorFor(operator, tokenHolder);
     }
 
@@ -403,7 +508,12 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         emit RevokedOperator(operator, holder);
     }
 
-    function defaultOperators() external view override returns (address[] memory) {
+    function defaultOperators()
+        external
+        view
+        override
+        returns (address[] memory)
+    {
         return ERC777Helper.defaultOperators(_operators);
     }
 
@@ -415,7 +525,10 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         bytes calldata operatorData
     ) external override {
         address operator = msg.sender;
-        require(_operators.isOperatorFor(operator, sender), "SuperToken: caller is not an operator for holder");
+        require(
+            _operators.isOperatorFor(operator, sender),
+            'SuperToken: caller is not an operator for holder'
+        );
         _send(operator, sender, recipient, amount, data, operatorData, true);
     }
 
@@ -426,7 +539,10 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         bytes calldata operatorData
     ) external override {
         address operator = msg.sender;
-        require(_operators.isOperatorFor(operator, account), "SuperToken: caller is not an operator for holder");
+        require(
+            _operators.isOperatorFor(operator, account),
+            'SuperToken: caller is not an operator for holder'
+        );
         // _downgrade(operator, account, amount, data, operatorData);
     }
 
@@ -486,8 +602,6 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         _transferFrom(msg.sender, msg.sender, recipient, balanceOf(msg.sender));
     }
 
-
-
     /**************************************************************************
      * Superfluid Batch Operations
      *************************************************************************/
@@ -509,11 +623,19 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         _transferFrom(account, spender, recipient, amount);
     }
 
-    function operationUpgrade(address account, uint256 amount) external override onlyHost {
+    function operationUpgrade(address account, uint256 amount)
+        external
+        override
+        onlyHost
+    {
         // _upgrade(msg.sender, account, account, amount, "", "");
     }
 
-    function operationDowngrade(address account, uint256 amount) external override onlyHost {
+    function operationDowngrade(address account, uint256 amount)
+        external
+        override
+        onlyHost
+    {
         // _downgrade(msg.sender, account, amount, "", "");
     }
 
@@ -522,7 +644,7 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
      *************************************************************************/
 
     modifier onlySelf() {
-        require(msg.sender == address(this), "SuperToken: only self allowed");
+        require(msg.sender == address(this), 'SuperToken: only self allowed');
         _;
     }
 }

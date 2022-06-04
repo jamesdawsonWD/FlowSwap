@@ -2,19 +2,12 @@
 pragma solidity >=0.8.0;
 
 interface IFlowSwap {
-    struct User {
-        int96 flowRate;
-        uint256 startPoint;
-        address from;
-        uint256 deposit;
-    }
-
     struct Reciept {
+        int96 flowRate;
+        uint256 deposit;
+        bool active;
         uint256 executed;
-        int96 token0FlowRate;
-        int96 token1FlowRate;
-        uint256 price0CumulativeStart;
-        uint256 price1CumulativeStart;
+        uint256 priceCumulativeStart;
     }
 
     /**************************************************************************
@@ -26,13 +19,12 @@ interface IFlowSwap {
 
     function reserve1() external view returns (uint112);
 
-    function pointAt(uint256 _pointId) external view returns (Reciept memory);
-
-    function swapOf(address _user) external view returns (User memory);
+    function swapOf(address _user) external view returns (Reciept memory);
 
     function blockTimestampLast() external view returns (uint32);
 
-    function totalPoints() external view returns (uint256);
+    function initialize(address underlyingToken0, address underlyingToken1)
+        external;
 
     function getPriceCumulativeLast(address token)
         external
@@ -45,8 +37,7 @@ interface IFlowSwap {
     event Created(
         address indexed sender,
         int96 token0FlowRate,
-        int96 token1FlowRate,
-        uint256 startPoint
+        int96 token1FlowRate
     );
     event Burn(
         address indexed sender,

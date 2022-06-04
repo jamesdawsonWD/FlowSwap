@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.13;
 import {IFlowSwap} from './interfaces/IFlowSwap.sol';
+import {IFlowFactory} from './interfaces/IFlowFactory.sol';
 import {IFlowSwapToken} from './interfaces/IFlowSwapToken.sol';
 import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {IConstantFlowAgreementV1} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/agreements/IConstantFlowAgreementV1.sol';
@@ -23,19 +24,18 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
     ISuperToken public token1;
     IFlowSwapToken public flowToken0;
     IFlowSwapToken public flowToken1;
-    address private flowTokenProxy;
+    IFlowFactory public factory;
+    address public flowTokenProxy;
 
-    mapping(uint256 => Reciept) private points;
-    mapping(address => User) private swaps;
+    mapping(address => Reciept) private swaps;
 
-    uint256 public totalPoints;
     uint256 public price0CumulativeLast;
     uint256 public price1CumulativeLast;
-    uint256 public kLast; // reserve0 * reserve1, as of immediately after the most recent liquidity event
 
     int112 private settledReserve0; // uses single storage slot, accessible via getReserves
     int112 private settledReserve1; // uses single storage slot, accessible via getReserves
     uint32 public blockTimestampLast; // uses single storage slot, accessible via getReserves
+
     int96 public token0GlobalFlowRate;
     int96 public token1GlobalFlowRate;
 
@@ -58,26 +58,16 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         );
     }
 
-    function pointAt(uint256 _pointId) external view returns (Reciept memory) {
-        return points[_pointId];
-    }
-
-    function swapOf(address _user) external view returns (User memory) {
-        return swaps[_user];
-    }
-
-    function getNow() external view returns (uint256) {
-        return block.timestamp;
-    }
-
     function initialize(address _underlyingToken0, address _underlyingToken1)
         external
     {
-        address _token0 = Clones.clone(flowTokenProxy);
-        address _token1 = Clones.clone(flowTokenProxy);
+        factory = IFlowFactory(msg.sender);
 
         token0 = ISuperToken(_underlyingToken0);
         token1 = ISuperToken(_underlyingToken1);
+
+        address _token0 = Clones.clone(flowTokenProxy);
+        address _token1 = Clones.clone(flowTokenProxy);
 
         IFlowSwapToken(_token0).initialize(
             token0,
@@ -139,29 +129,6 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         blockTimestampLast = timestamp;
     }
 
-    function _mintFee(uint112 _reserve0, uint112 _reserve1)
-        private
-        returns (bool feeOn)
-    {
-        address feeTo = IUniswapV2Factory(factory).feeTo();
-        feeOn = feeTo != address(0);
-        uint256 _kLast = kLast; // gas savings
-        if (feeOn) {
-            if (_kLast != 0) {
-                uint256 rootK = Math.sqrt(uint256(_reserve0).mul(_reserve1));
-                uint256 rootKLast = Math.sqrt(_kLast);
-                if (rootK > rootKLast) {
-                    uint256 numerator = totalSupply.mul(rootK.sub(rootKLast));
-                    uint256 denominator = rootK.mul(5).add(rootKLast);
-                    uint256 liquidity = numerator / denominator;
-                    if (liquidity > 0) _mint(feeTo, liquidity);
-                }
-            }
-        } else if (_kLast != 0) {
-            kLast = 0;
-        }
-    }
-
     // this low-level function should be called from a contract which performs important safety checks
     function mint(address to) external returns (uint256 liquidity) {
         (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
@@ -170,7 +137,6 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         uint256 amount0 = balance0.sub(_reserve0);
         uint256 amount1 = balance1.sub(_reserve1);
 
-        bool feeOn = _mintFee(_reserve0, _reserve1);
         uint256 _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         if (_totalSupply == 0) {
             liquidity = Math.sqrt(amount0.mul(amount1)).sub(MINIMUM_LIQUIDITY);
@@ -185,7 +151,6 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         _mint(to, liquidity);
 
         _update(balance0, balance1, _reserve0, _reserve1);
-        if (feeOn) kLast = uint256(reserve0()).mul(reserve1()); // reserve0 and reserve1 are up-to-date
         emit Mint(msg.sender, amount0, amount1);
     }
 
@@ -199,7 +164,6 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         uint256 balance1 = token1.balanceOf(address(this));
         uint256 liquidity = balanceOf[address(this)];
 
-        bool feeOn = _mintFee(_reserve0, _reserve1);
         uint256 _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         amount0 = liquidity.mul(balance0) / _totalSupply; // using balances ensures pro-rata distribution
         amount1 = liquidity.mul(balance1) / _totalSupply; // using balances ensures pro-rata distribution
@@ -218,10 +182,13 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         balance1 = ISuperToken(_token1).balanceOf(address(this));
 
         _update(balance0, balance1, _reserve0, _reserve1);
-        if (feeOn) kLast = uint256(reserve0()).mul(reserve1()); // reserve0 and reserve1 are up-to-date
         emit Burn(msg.sender, amount0, amount1, to);
     }
 
+    /**
+     *   Claim - turns wrapped Super Tokens back into super tokens
+     *   @param to - the address for the tokens to be sent
+     */
     function claim(address to) external {
         uint256 balance0 = flowToken0.balanceOf(address(this));
         uint256 balance1 = flowToken1.balanceOf(address(this));
@@ -232,21 +199,42 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         // _update(balance0, balance1, _reserve0, _reserve1);
     }
 
-    function liquidate(address user) external {
-        (, int96 flowRate, , ) = cfa.getFlow(user, msg.sender, address(this));
-        if (flowRate != swaps[user].flowRate && swaps[user].active) {
-            swaps[user].active = false;
-            swaps[user].flowRate = 0;
-            _safeTransfer(swaps[user].from, msg.sender, swaps[user].deposit);
+    /**
+     *   liquidate - liquidates a flow that does not match the flowswap's state
+     *   @param who - the address to be liquidated
+     *   @param token - the token that 'who' has altered externally
+     */
+    function liquidate(address who, address token) external {
+        (, int96 flowRate, , ) = cfa.getFlow(
+            ISuperToken(token),
+            who,
+            address(this)
+        );
+        if (flowRate != swaps[who].flowRate && swaps[who].active) {
+            // probably should check if the who is still flowwing so they can reclaim their money
+            // but for now if a change is made externally they will lose their deposit & their flow
+            // inside flowswap will stop even if they are still flowing to the protocol. i.e if they
+            // changed the amount being streamed outside of the protocols knowledge
+            uint256 _deposit = swaps[who].deposit;
+            swaps[who].active = false;
+            swaps[who].flowRate = 0;
+            swaps[who].deposit = 0;
+            _safeTransfer(token, msg.sender, _deposit);
         }
     }
 
-    // this low-level function should be called from a contract which performs important safety checks
+    /**
+     *   createFlow - takes a previosuly created superfluid flow and creates a flowswap
+     *   @param flowId - id of the previously created flow
+     *   @param flowDirection - true = 0 -> 1 : false = 1 -> 0
+     */
     function createFlow(bytes32 flowId, bool flowDirection) external {
         (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
+
         ISuperToken from = flowDirection
             ? ISuperToken(token0)
             : ISuperToken(token1);
+
         (, int96 flowRate, , ) = cfa.getFlow(from, msg.sender, address(this));
 
         require(flowRate > 0, 'FlowSwap: Steam must exist');
@@ -256,28 +244,12 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
 
         _update(balance0, balance1, _reserve0, _reserve1);
 
-        totalPoints += 1;
-
-        int96 _token0FlowRate = flowDirection
-            ? points[totalPoints - 1].token0FlowRate + flowRate
-            : points[totalPoints - 1].token0FlowRate;
-
-        int96 _token1FlowRate = flowDirection
-            ? points[totalPoints - 1].token1FlowRate
-            : points[totalPoints - 1].token1FlowRate + flowRate;
-
-        points[totalPoints] = Reciept({
-            executed: block.timestamp,
-            token0FlowRate: _token0FlowRate,
-            token1FlowRate: _token1FlowRate,
-            price0CumulativeStart: price0CumulativeLast,
-            price1CumulativeStart: price1CumulativeLast
-        });
-
-        swaps[msg.sender] = User({
+        swaps[msg.sender] = Reciept({
             flowRate: flowRate,
-            startPoint: totalPoints,
-            active: true
+            active: true,
+            deposit: 0, //TODO: figure out how superfluid calculate a non arbitrary deposit
+            priceCumulativeStart: getPriceCumulativeLast(address(from)),
+            executed: block.timestamp
         });
 
         token0GlobalFlowRate = flowDirection
@@ -288,15 +260,48 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
             ? token1GlobalFlowRate + flowRate
             : token1GlobalFlowRate;
 
-        emit Created(msg.sender, _token0FlowRate, _token1FlowRate, totalPoints);
+        emit Created(msg.sender, token0GlobalFlowRate, token1GlobalFlowRate);
     }
 
-    function updateFlow(bytes32 flowId, bool flowDirection) external {
-        (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
-        ISuperToken from = flowDirection
-            ? ISuperToken(token0)
-            : ISuperToken(token1);
-        (, int96 flowRate, , ) = cfa.getFlow(from, msg.sender, address(this));
+    // TODO
+    // function updateFlow(bytes32 flowId, bool flowDirection) external {
+    //     (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
+    //     ISuperToken from = flowDirection
+    //         ? ISuperToken(token0)
+    //         : ISuperToken(token1);
+    //     (, int96 flowRate, , ) = cfa.getFlow(from, msg.sender, address(this));
+    // }
+
+    function swapOf(address who) external view returns (Reciept memory) {
+        return swaps[who];
+    }
+
+    //TODO: check how superfluid actually implement this :D
+    function getNow() external view returns (uint256) {
+        return block.timestamp;
+    }
+
+    function kNow() public view returns (uint256) {
+        address feeTo = IFlowFactory(factory).feeTo();
+        bool feeOn = feeTo != address(0);
+        return feeOn ? uint256(reserve0()).mul(reserve1()) : 0;
+    }
+
+    function feeAvailable() external view returns (uint256 liquidity) {
+        address feeTo = IFlowFactory(factory).feeTo();
+        bool feeOn = feeTo != address(0);
+        uint256 _kLast = kNow(); // gas savings
+        if (feeOn) {
+            if (_kLast != 0) {
+                uint256 rootK = Math.sqrt(uint256(reserve0()).mul(reserve1()));
+                uint256 rootKLast = Math.sqrt(_kLast);
+                if (rootK > rootKLast) {
+                    uint256 numerator = totalSupply.mul(rootK.sub(rootKLast));
+                    uint256 denominator = rootK.mul(5).add(rootKLast);
+                    liquidity = numerator / denominator;
+                }
+            }
+        }
     }
 
     function reserve0() public view returns (uint112) {
@@ -343,9 +348,9 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         returns (uint256 priceCumulativeLast)
     {
         if (token == address(token0)) {
-            priceCumulativeLast = price0CumulativeNow();
-        } else {
             priceCumulativeLast = price1CumulativeNow();
+        } else {
+            priceCumulativeLast = price0CumulativeNow();
         }
     }
 
