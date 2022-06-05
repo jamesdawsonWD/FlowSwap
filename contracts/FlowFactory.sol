@@ -4,18 +4,21 @@ import {Clones} from '@openzeppelin/contracts/proxy/Clones.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 import './interfaces/IFlowFactory.sol';
 import './interfaces/IFlowSwap.sol';
+import {IFlowSwapToken} from './interfaces/IFlowSwapToken.sol';
 
 contract FlowFactory is Ownable, IFlowFactory {
-    address public flowSwapAddress;
     address[] public override allPairs;
+    address public flowSwapAddress;
+    address public flowTokenProxy;
     address public override feeTo;
     address public override feeToSetter;
     address public override migrator;
 
     mapping(address => mapping(address => address)) public override getPair;
 
-    constructor(address _flowSwapAddress) {
+    constructor(address _flowSwapAddress, address _flowTokenProxy) {
         flowSwapAddress = _flowSwapAddress;
+        flowTokenProxy = _flowTokenProxy;
     }
 
     function setflowSwapAddress(address _flowSwapAddress) public onlyOwner {
@@ -40,12 +43,22 @@ contract FlowFactory is Ownable, IFlowFactory {
             getPair[token0][token1] == address(0),
             'UniswapV2: PAIR_EXISTS'
         ); // single check is sufficient
+        address _flowToken0 = Clones.clone(flowTokenProxy);
+        address _flowToken1 = Clones.clone(flowTokenProxy);
+
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
         pair = Clones.cloneDeterministic(flowSwapAddress, salt);
-        IFlowSwap(pair).initialize(token0, token1);
+        
+        IFlowSwapToken(_flowToken0).initialize(token0, pair);
+        IFlowSwapToken(_flowToken1).initialize(token1, pair);
+
+        IFlowSwap(pair).initialize(token0, token1, _flowToken0, _flowToken1);
+
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // populate mapping in the reverse direction
+        
         allPairs.push(pair);
+        
         emit PairCreated(token0, token1, pair, allPairs.length);
     }
 

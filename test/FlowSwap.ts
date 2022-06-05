@@ -78,12 +78,12 @@ describe('FlowSwap Contract', () => {
         await flowTokenProxy.deployed();
 
         flowSwap = await FlowSwap.deploy(
-            cfa.contract.address,
-            flowTokenProxy.address
+            cfa.contract.address
         );
         await flowSwap.deployed();
 
-        flowFactory = await FlowFactory.deploy(flowSwap.address);
+        flowFactory = await FlowFactory.deploy(flowSwap.address,
+            flowTokenProxy.address);
         await flowFactory.deployed();
 
         // //deploy a fake erc20 token

@@ -39,8 +39,7 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
     int96 public token0GlobalFlowRate;
     int96 public token1GlobalFlowRate;
 
-    constructor(address _constantFlowAgreement, address _flowTokenProxy) {
-        flowTokenProxy = _flowTokenProxy;
+    constructor(address _constantFlowAgreement) {
         cfa = IConstantFlowAgreementV1(_constantFlowAgreement);
     }
 
@@ -58,34 +57,19 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         );
     }
 
-    function initialize(address _underlyingToken0, address _underlyingToken1)
-        external
-    {
+    function initialize(
+        address _underlyingToken0,
+        address _underlyingToken1,
+        address _flowToken0,
+        address _flowToken1
+    ) external {
         factory = IFlowFactory(msg.sender);
 
         token0 = ISuperToken(_underlyingToken0);
         token1 = ISuperToken(_underlyingToken1);
 
-        address _token0 = Clones.clone(flowTokenProxy);
-        address _token1 = Clones.clone(flowTokenProxy);
-
-        IFlowSwapToken(_token0).initialize(
-            token0,
-            token0.decimals(),
-            token0.name(),
-            token0.symbol(),
-            address(this)
-        );
-        IFlowSwapToken(_token1).initialize(
-            token1,
-            token1.decimals(),
-            token1.name(),
-            token1.symbol(),
-            address(this)
-        );
-
-        flowToken0 = IFlowSwapToken(_token0);
-        flowToken1 = IFlowSwapToken(_token1);
+        flowToken0 = IFlowSwapToken(_flowToken0);
+        flowToken1 = IFlowSwapToken(_flowToken1);
     }
 
     function getReserves()
