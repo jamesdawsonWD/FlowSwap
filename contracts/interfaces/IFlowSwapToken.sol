@@ -9,7 +9,7 @@ import {ISuperToken} from '@superfluid-finance/ethereum-contracts/contracts/inte
  * @author Superfluid
  */
 interface IFlowSwapToken is IFlowToken, TokenInfo, IERC20, IERC777 {
-    event FlowSwapTokenCreated(address host, address underlying);
+    event FlowSwapTokenCreated(address indexed host, address indexed underlying);
 
     /**
      * @dev Initialize the contract

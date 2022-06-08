@@ -5,6 +5,7 @@ import '@openzeppelin/contracts/access/Ownable.sol';
 import './interfaces/IFlowFactory.sol';
 import './interfaces/IFlowSwap.sol';
 import {IFlowSwapToken} from './interfaces/IFlowSwapToken.sol';
+import {ISuperToken, ISuperfluid} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol';
 
 contract FlowFactory is Ownable, IFlowFactory {
     address[] public override allPairs;
@@ -13,10 +14,11 @@ contract FlowFactory is Ownable, IFlowFactory {
     address public override feeTo;
     address public override feeToSetter;
     address public override migrator;
-
+    ISuperfluid public host;
     mapping(address => mapping(address => address)) public override getPair;
 
-    constructor(address _flowSwapAddress, address _flowTokenProxy) {
+    constructor(ISuperfluid _host, address _flowSwapAddress, address _flowTokenProxy) {
+        host = _host;
         flowSwapAddress = _flowSwapAddress;
         flowTokenProxy = _flowTokenProxy;
     }
@@ -48,17 +50,19 @@ contract FlowFactory is Ownable, IFlowFactory {
 
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
         pair = Clones.cloneDeterministic(flowSwapAddress, salt);
-        
-        IFlowSwapToken(_flowToken0).initialize(token0, pair);
-        IFlowSwapToken(_flowToken1).initialize(token1, pair);
 
-        IFlowSwap(pair).initialize(token0, token1, _flowToken0, _flowToken1);
+        ISuperToken _token0 = ISuperToken(token0); 
+        ISuperToken _token1 = ISuperToken(token1); 
+    
+        IFlowSwapToken(_flowToken0).initialize(_token0, _token0.decimals(), _token0.name(), _token0.symbol(), pair);
+        IFlowSwapToken(_flowToken1).initialize(_token1, _token1.decimals(), _token1.name(), _token1.symbol(), pair);
+        IFlowSwap(pair).initialize(host, token0, token1, _flowToken0, _flowToken1);
 
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // populate mapping in the reverse direction
-        
+
         allPairs.push(pair);
-        
+
         emit PairCreated(token0, token1, pair, allPairs.length);
     }
 

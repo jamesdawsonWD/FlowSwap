@@ -1,25 +1,35 @@
 import { expect } from 'chai';
+import BN from 'bn.js';
 import { ethers, waffle } from 'hardhat';
 import {
-    getEvent,
     retrieveEventParam,
     sortAddresses,
     addressZero,
+    decodeEvents,
 } from './helpers';
-import { BigNumber } from 'ethers';
+import { BigNumber, BytesLike, Contract, Signer } from 'ethers';
+import {
+    advanceBlock,
+    advanceTime,
+    advanceTimeAndBlock,
+    revertToSnapshot,
+    takeSnapshot,
+} from './helpers/timetraveler';
 import {
     ConstantFlowAgreementV1,
     Framework,
-    SuperToken,
+    WrapperSuperToken,
 } from '@superfluid-finance/sdk-core';
 import {
-    SuperTokenMock,
-    SuperfluidMock,
     FlowFactory,
     FlowSwapToken,
     FlowSwap,
+    FlowSwapRouter,
 } from '../typechain-types';
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
+import ERC20MockJson from '../artifacts/contracts/test/ERC20Mock.sol/ERC20Mock.json';
+import { addLiquidityManual } from './helpers/flowSwapRouter';
+import { Result } from 'ethers/lib/utils';
 
 // Superfluid deploying helpers
 /* eslint @typescript-eslint/no-var-requires: "off" */
@@ -30,23 +40,27 @@ const { web3 } = require('hardhat');
 
 const provider = web3.provider;
 describe('FlowSwap Contract', () => {
-    let superfluid: SuperfluidMock;
-    let superTokenMock0: SuperTokenMock;
-    let superTokenMock1: SuperTokenMock;
     let flowFactory: FlowFactory;
     let flowSwap: FlowSwap;
-    let flowswapToken0: FlowSwapToken;
-    let flowswapToken1: FlowSwapToken;
+    let flowSwapToken0: FlowSwapToken;
+    let flowSwapToken1: FlowSwapToken;
     let flowTokenProxy: FlowSwapToken;
+    let flowSwapRouter: FlowSwapRouter;
     let addrs: SignerWithAddress[];
     let owner: SignerWithAddress;
     let addr1: SignerWithAddress;
     let addr2: SignerWithAddress;
     let pair1: FlowSwap;
-    let superToken0: string;
-    let superToken1: string;
+    let mockToken0: Contract;
+    let mockToken1: Contract;
+    let mockToken0Balance: string;
+    let mockToken1Balance: string;
+    let superToken0: WrapperSuperToken;
+    let superToken1: WrapperSuperToken;
     let sf: Framework;
     let cfa: ConstantFlowAgreementV1;
+    let superSigner: Signer;
+    let snapshotId: string | Error;
     const errorHandler = (err: Error) => {
         if (err) throw err;
     };
@@ -58,8 +72,10 @@ describe('FlowSwap Contract', () => {
             web3,
             from: owner.address,
         });
+
+        // Couldn't seem to get the correct typing here, quick fix :c
         const ethersProvider = owner.provider as any;
-        console.log(provider);
+
         sf = await Framework.create({
             networkName: 'custom',
             provider: ethersProvider,
@@ -73,51 +89,122 @@ describe('FlowSwap Contract', () => {
         const FlowFactory = await ethers.getContractFactory('FlowFactory');
         const FlowSwap = await ethers.getContractFactory('FlowSwap');
         const FlowTokenProxy = await ethers.getContractFactory('FlowSwapToken');
+        const FlowSwapRouter = await ethers.getContractFactory(
+            'FlowSwapRouter'
+        );
 
         flowTokenProxy = await FlowTokenProxy.deploy();
         await flowTokenProxy.deployed();
 
-        flowSwap = await FlowSwap.deploy(
-            cfa.contract.address
-        );
+        flowSwap = await FlowSwap.deploy();
         await flowSwap.deployed();
 
-        flowFactory = await FlowFactory.deploy(flowSwap.address,
-            flowTokenProxy.address);
+        flowFactory = await FlowFactory.deploy(
+            sf.host.contract.address,
+            flowSwap.address,
+            flowTokenProxy.address
+        );
         await flowFactory.deployed();
 
-        // //deploy a fake erc20 token
-        const token0 = await deployTestToken(errorHandler, [':', 'fDAI'], {
+        await deployTestToken(errorHandler, [':', 'fDAI'], {
             web3,
             from: owner.address,
         });
-        // //deploy a fake erc20 wrapper super token around the fDAI token
-        superToken0 = await deploySuperToken(errorHandler, [':', 'fDAI'], {
+        await deploySuperToken(errorHandler, [':', 'fDAI'], {
             web3,
             from: owner.address,
         });
-        //deploy a fake erc20 token
-        const token1 = await deployTestToken(errorHandler, [':', 'fWETH'], {
+        await deployTestToken(errorHandler, [':', 'fWETH'], {
             web3,
             from: owner.address,
         });
-        //deploy a fake erc20 wrapper super token around the fDAI token
-        superToken1 = await deploySuperToken(errorHandler, [':', 'fWETH'], {
+        await deploySuperToken(errorHandler, [':', 'fWETH'], {
             web3,
             from: owner.address,
         });
 
-        console.log(
-            superToken0,
-            ' #################################################################'
+        superSigner = await sf.createSigner({
+            signer: owner,
+            provider: provider,
+        });
+
+        superToken0 = await sf.loadWrapperSuperToken('fDAIx');
+        superToken1 = await sf.loadWrapperSuperToken('fWETHx');
+
+        const _underlying0 = superToken0.underlyingToken?.address as string;
+        const _underlying1 = superToken1.underlyingToken?.address as string;
+
+        mockToken0 = await new ethers.Contract(
+            _underlying0,
+            ERC20MockJson.abi,
+            owner
         );
-        const tx = await flowFactory.createPair(superToken0, superToken1);
-        const receipt = await tx.wait();
-        console.log(receipt.events);
+        mockToken1 = await new ethers.Contract(
+            _underlying1,
+            ERC20MockJson.abi,
+            owner
+        );
 
+        const tx = await flowFactory.createPair(
+            superToken0.address,
+            superToken1.address
+        );
         const pair = await retrieveEventParam(tx, 'PairCreated', 'pair');
-
         pair1 = FlowSwap.attach(pair);
+
+        const _flowSwapToken0 = await pair1.flowToken0();
+        const _flowSwapToken1 = await pair1.flowToken1();
+
+        flowSwapToken0 = FlowTokenProxy.attach(_flowSwapToken0);
+        flowSwapToken1 = FlowTokenProxy.attach(_flowSwapToken1);
+
+        // Router
+        flowSwapRouter = await FlowSwapRouter.deploy(
+            flowFactory.address,
+            mockToken1.address,
+            sf.host.contract.address
+        );
+        await flowSwapRouter.deployed();
+
+        // Providing Tokens for test
+        await mockToken0
+            .connect(owner)
+            .mint(owner.address, ethers.utils.parseEther('1000'));
+
+        await mockToken1
+            .connect(owner)
+            .mint(owner.address, ethers.utils.parseEther('1000'));
+
+        await mockToken0
+            .connect(owner)
+            .approve(superToken0.address, ethers.utils.parseEther('1000'));
+
+        await mockToken1
+            .connect(owner)
+            .approve(superToken1.address, ethers.utils.parseEther('1000'));
+
+        const superToken0UpgradeOperation = superToken0.upgrade({
+            amount: ethers.utils.parseEther('1000').toString(),
+        });
+        const superToken1UpgradeOperation = superToken1.upgrade({
+            amount: ethers.utils.parseEther('1000').toString(),
+        });
+
+        await superToken0UpgradeOperation.exec(owner);
+        await superToken1UpgradeOperation.exec(owner);
+    });
+
+    // Take base snapshot before each test
+    beforeEach(async () => {
+        snapshotId = await takeSnapshot();
+    });
+
+    // Revert to base snapshot after
+    afterEach(async () => {
+        expect(
+            typeof snapshotId === 'string' || snapshotId instanceof String
+        ).to.equal(true);
+        await revertToSnapshot(snapshotId as string);
     });
 
     describe('Deployment', () => {
@@ -129,94 +216,190 @@ describe('FlowSwap Contract', () => {
         it('FlowSwap(Proxy): Should be deployed and contain correct CFA', async () => {
             expect(await flowSwap.cfa()).to.equal(cfa.contract.address);
         });
-        it('FlowSwap(Proxy): Should be deployed and contain correct FlowTokenProxy', async () => {
-            expect(await flowSwap.flowTokenProxy()).to.equal(
+        it('FlowFactory: Should be deployed and contain correct FlowTokenProxy', async () => {
+            expect(await flowFactory.flowTokenProxy()).to.equal(
                 flowTokenProxy.address
             );
         });
         it('FlowSwap(Pair): Should be deployed and have correct underlying tokens set', async () => {
-            const [token0, token1] = sortAddresses(superToken0, superToken1);
+            const [token0, token1] = sortAddresses(
+                superToken0.address,
+                superToken1.address
+            );
             expect(await pair1.token0()).to.equal(token0);
             expect(await pair1.token1()).to.equal(token1);
         });
         it('FlowSwap(Pair): Should be deployed and have correct underlying tokens set', async () => {
-            const [token0, token1] = sortAddresses(superToken0, superToken1);
+            const [token0, token1] = sortAddresses(
+                superToken0.address,
+                superToken1.address
+            );
             expect(await pair1.token0()).to.equal(token0);
             expect(await pair1.token1()).to.equal(token1);
         });
         it('FlowSwap(Pair): Should of created two FlowSwapTokens with correct underlying supertokens', async () => {
-            const [token0, token1] = sortAddresses(superToken0, superToken1);
-
-            const _flowSwapToken0 = await pair1.flowToken0();
-            const _flowSwapToken1 = await pair1.flowToken1();
-
-            expect(_flowSwapToken0).to.not.equal(addressZero);
-            expect(_flowSwapToken1).to.not.equal(addressZero);
-
-            console.log(_flowSwapToken0, _flowSwapToken1);
-
-            const FlowTokenProxy = await ethers.getContractFactory(
-                'FlowSwapToken'
-            );
-
-            const flowSwapToken0 = await FlowTokenProxy.attach(_flowSwapToken0);
-            const flowSwapToken1 = await FlowTokenProxy.attach(_flowSwapToken1);
+            expect(flowSwapToken0.address).to.not.equal(addressZero);
+            expect(flowSwapToken1.address).to.not.equal(addressZero);
 
             const host0 = await flowSwapToken0.getHost();
             const host1 = await flowSwapToken1.getHost();
 
-            expect(host0).to.equal(flowSwap.address);
-            expect(host1).to.equal(flowSwap.address);
+            expect(host0).to.equal(pair1.address);
+            expect(host1).to.equal(pair1.address);
+        });
+        it('FlowSwapRouter: Should be deployed and have set correct state', async () => {
+            const routerCfa = await flowSwapRouter.cfaV1();
+            const swapCfa = await flowSwap.cfaV1();
+            expect(routerCfa).to.not.equal(swapCfa);
         });
     });
 
-    // describe('Gallery', () => {
-    //     // it('Should Donate an NFT', async () => {
-    //     //     const totalDonationsBefore = await gallery1.totalNftDonations();
-    //     //     await testNft.connect(addr1).approve(gallery1.address, 6);
-    //     //     const tx = await gallery1
-    //     //         .connect(addr1)
-    //     //         .donate(testNft.address, 6, ethers.utils.parseEther('25'));
-    //     //     const receipt = await tx.wait();
-    //     //     const event = getEvent(receipt, 'Donated');
-    //     //     const donationId = event[0].args['donationID'];
-    //     //     const donation = await gallery1.donations(donationId);
-    //     //     const totalDonationsAfter = await gallery1.totalNftDonations();
-    //     //     expect(totalDonationsBefore.toNumber() + 1).to.equal(
-    //     //         totalDonationsAfter
-    //     //     );
-    //     //     expect(await testNft.ownerOf(6)).to.equal(await gallery1.address);
-    //     //     expect(donation['price']).to.equal(ethers.utils.parseEther('25'));
-    //     //     expect(donation['donator']).to.equal(addr1.address);
-    //     //     expect(donation['tokenId']).to.equal(6);
-    //     //     expect(donation['collection']).to.equal(testNft.address);
-    //     //     expect(donation['sold']).to.equal(false);
-    //     // });
-    //     // it('Should buy a donated NFT', async () => {
-    //     //     const totalDonationsBefore = await gallery1.totalDonations();
-    //     //     await testNft.connect(addr1).approve(gallery1.address, 6);
-    //     //     const tx = await gallery1
-    //     //         .connect(addr1)
-    //     //         .donate(testNft.address, 6, ethers.utils.parseEther('25'));
-    //     //     await gallery1
-    //     //         .connect(addr2)
-    //     //         .buy(1, { value: ethers.utils.parseEther('25') });
-    //     //     const totalDonationsAfter = await gallery1.totalDonations();
-    //     //     expect(await testNft.ownerOf(6)).to.equal(addr2.address);
-    //     //     expect(ethers.utils.parseEther('25')).to.equal(totalDonationsAfter);
-    //     // });
-    //     // it('Should allow guardian to withdraw', async () => {
-    //     //     await testNft.connect(addr1).approve(gallery1.address, 6);
-    //     //     await gallery1
-    //     //         .connect(addr1)
-    //     //         .donate(testNft.address, 6, ethers.utils.parseEther('25'));
-    //     //     await gallery1.connect(
-    //     //         addr2.buy(1, { value: ethers.utils.parseEther('25') })
-    //     //     );
-    //     //     const balanceBefore = await provider.getBalance(owner.address);
-    //     //     const tx = await gallery1.withdraw();
-    //     //     const receipt = await tx.wait();
-    //     //     const balanceAfter = await provider.getBalance(owner.address);
-    //     // });
-    // });
+    describe('FlowSwapRouter', () => {
+        it('Should provide liquidty and mint correct amount of LP tokens', async () => {
+            const flowRate = '1000000';
+            const amount0 = ethers.utils.parseEther('100').toString();
+            const amount1 = ethers.utils.parseEther('200').toString();
+            const { expectedLiquidty, acctualLiquidity } =
+                await addLiquidityManual(
+                    pair1,
+                    superToken0,
+                    superToken1,
+                    amount0,
+                    amount1,
+                    owner
+                );
+            await sf.cfaV1
+                .authorizeFlowOperatorWithFullControl({
+                    flowOperator: ethers.utils.getAddress(
+                        flowSwapRouter.address
+                    ),
+                    superToken: ethers.utils.getAddress(superToken0.address),
+                })
+                .exec(owner);
+
+            const tx = await flowSwapRouter.createFlow(
+                ethers.utils.getAddress(superToken0.address),
+                flowRate,
+                ethers.utils.getAddress(pair1.address)
+            );
+        });
+    });
+    describe('FlowSwap', () => {
+        it('Should provide liquidty and mint correct amount of LP tokens', async () => {
+            const amount0 = ethers.utils.parseEther('100').toString();
+            const amount1 = ethers.utils.parseEther('200').toString();
+
+            const { expectedLiquidty, acctualLiquidity } =
+                await addLiquidityManual(
+                    pair1,
+                    superToken0,
+                    superToken1,
+                    amount0,
+                    amount1,
+                    owner
+                );
+            expect(acctualLiquidity.toString()).to.equal(
+                expectedLiquidty.toString()
+            );
+        });
+
+        it('[CreateFlow]: Should create a FlowSwap and set all state correctly', async () => {
+            const flowRate = '1000000';
+            const amount0 = ethers.utils.parseEther('100').toString();
+            const amount1 = ethers.utils.parseEther('200').toString();
+            await addLiquidityManual(
+                pair1,
+                superToken0,
+                superToken1,
+                amount0,
+                amount1,
+                owner
+            );
+
+            await sf.cfaV1
+                .createFlow({
+                    flowRate,
+                    receiver: pair1.address,
+                    superToken: superToken0.address,
+                })
+                .exec(owner);
+
+            const tx = await pair1.createFlow(
+                owner.address,
+                ethers.utils.getAddress(superToken0.address)
+            );
+            const txReceipt = await tx.wait();
+            const blockNumber = txReceipt.blockNumber;
+            const executed = await provider.getBlock(blockNumber);
+            console.log(executed);
+            const receipt = await pair1.swapOf(owner.address);
+            const globalFlowRate0 = await pair1.token0GlobalFlowRate();
+            const globalFlowRate1 = await pair1.token1GlobalFlowRate();
+
+            expect(receipt['flowRate'].toString()).to.equal(flowRate);
+            expect(receipt['active']).to.equal(true);
+            expect(receipt['deposit'].toString()).to.equal('0');
+            // expect(receipt['executed'].toString()).to.equal(
+            //     txReceipt.
+            // );
+            expect(globalFlowRate0.toString()).to.equal(flowRate);
+            expect(globalFlowRate1.toString()).to.equal('0');
+        });
+
+        it('[CreateFlow]: Should create a FlowSwap and stream back correct amount to user', async () => {
+            const flowRate = '1000000';
+            const amount0 = ethers.utils.parseEther('100').toString();
+            const amount1 = ethers.utils.parseEther('200').toString();
+            await addLiquidityManual(
+                pair1,
+                superToken0,
+                superToken1,
+                amount0,
+                amount1,
+                owner
+            );
+
+            await sf.cfaV1
+                .createFlow({
+                    flowRate,
+                    receiver: pair1.address,
+                    superToken: superToken0.address,
+                })
+                .exec(owner);
+
+            const tx = await pair1.createFlow(
+                owner.address,
+                ethers.utils.getAddress(superToken0.address)
+            );
+            const txReceipt = await tx.wait();
+            const blockNumber = txReceipt.blockNumber;
+            const executed = await provider.getBlock(blockNumber);
+            console.log(executed);
+            const receipt = await pair1.swapOf(owner.address);
+            const globalFlowRate0 = await pair1.token0GlobalFlowRate();
+            const globalFlowRate1 = await pair1.token1GlobalFlowRate();
+
+            expect(receipt['flowRate'].toString()).to.equal(flowRate);
+            expect(receipt['active']).to.equal(true);
+            expect(receipt['deposit'].toString()).to.equal('0');
+            // expect(receipt['executed'].toString()).to.equal(
+            //     txReceipt.
+            // );
+            expect(globalFlowRate0.toString()).to.equal(flowRate);
+            expect(globalFlowRate1.toString()).to.equal('0');
+        });
+        //     //     // it('Should allow guardian to withdraw, async () => {
+        //     //     //     await testNft.connect(addr1).approve(gallery1.address, 6);
+        //     //     //     await gallery1
+        //     //     //         .connect(addr1)
+        //     //     //         .donate(testNft.address, 6, ethers.utils.parseEther('25'));
+        //     //     //     await gallery1.connect(
+        //     //     //         addr2.buy(1, { value: ethers.utils.parseEther('25') })
+        //     //     //     );
+        //     //     //     const balanceBefore = await provider.getBalance(owner.address);
+        //     //     //     const tx = await gallery1.withdraw();
+        //     //     //     const receipt = await tx.wait();
+        //     //     //     const balanceAfter = await provider.getBalance(owner.address);
+        //     //     // });
+    });
 });
