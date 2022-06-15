@@ -347,31 +347,6 @@ contract FlowSwapRouter is IFlowSwapRouter {
         );
     }
 
-    function createFlow(
-        address token,
-        int96 flowRate,
-        address pair
-    ) external {
-        cfaV1.createFlowByOperator(
-            msg.sender,
-            pair,
-            ISuperfluidToken(token),
-            flowRate,
-            '0x'
-        );
-
-        // call to seperate contract
-        IFlowSwap(pair).createFlow(msg.sender, token);
-    }
-
-    // Superfluid Helpers
-    function approveRouter(address token) external {
-        cfaV1.authorizeFlowOperatorWithFullControl(
-            address(this),
-            ISuperToken(token)
-        );
-    }
-
     // **** LIBRARY FUNCTIONS ****
     function quote(
         uint256 amountA,

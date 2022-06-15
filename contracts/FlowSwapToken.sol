@@ -198,7 +198,7 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         bytes memory userData,
         bytes memory operatorData
     ) private {
-        FlowToken._move(from, to, amount.toInt256());
+        FlowToken._move(from, to, amount);
 
         emit Sent(operator, from, to, amount, userData, operatorData);
         emit Transfer(from, to, amount);
@@ -396,8 +396,8 @@ contract FlowSwapToken is UUPSProxiable, FlowToken, IFlowSwapToken {
         returns (uint256 balance)
     {
         // solhint-disable-next-line not-rely-on-time
-        int256 availableBalance = super.realtimeBalanceOfNow(account);
-        return availableBalance < 0 ? 0 : uint256(availableBalance);
+        uint256 availableBalance = super.realtimeBalanceOfNow(account);
+        return availableBalance < 0 ? 0 : availableBalance;
     }
 
     function transfer(address recipient, uint256 amount)

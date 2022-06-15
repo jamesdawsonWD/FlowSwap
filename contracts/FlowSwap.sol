@@ -2,6 +2,7 @@
 pragma solidity 0.8.13;
 import {IFlowSwap} from './interfaces/IFlowSwap.sol';
 import {IFlowFactory} from './interfaces/IFlowFactory.sol';
+import {IFlowSwapERC20} from './interfaces/IFlowSwapERC20.sol';
 import {IFlowSwapToken} from './interfaces/IFlowSwapToken.sol';
 import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {Clones} from '@openzeppelin/contracts/proxy/Clones.sol';
@@ -12,19 +13,22 @@ import {FlowSwapERC20} from './FlowSwapERC20.sol';
 import {ISuperfluid, SuperAppDefinitions, ISuperToken, ISuperAgreement} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol';
 import {IConstantFlowAgreementV1} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/agreements/IConstantFlowAgreementV1.sol';
 import {CFAv1Library} from './superfluid/CFAv1Library.sol';
-import {SuperAppBase} from '@superfluid-finance/ethereum-contracts/contracts/apps/SuperAppBase.sol';
 
-contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
+contract FlowSwap is IFlowSwap {
     using UQ112x112 for uint224;
     using SafeMath for uint256;
     using CFAv1Library for CFAv1Library.InitData;
 
-    uint256 public constant MINIMUM_LIQUIDITY = 10**3;
-    bytes4 private constant SELECTOR =
-        bytes4(keccak256(bytes('transfer(address,uint256)')));
+    struct Vector {
+        int256 x;
+        int256 y;
+    }
 
+    uint256 public constant MINIMUM_LIQUIDITY = 10**3;
     bytes32 public constant CFA_ID =
         keccak256('org.superfluid-finance.agreements.ConstantFlowAgreement.v1');
+    bytes4 private constant SELECTOR =
+        bytes4(keccak256(bytes('transfer(address,uint256)')));
 
     CFAv1Library.InitData public cfaV1;
     ISuperToken public token0;
@@ -33,62 +37,45 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
     IFlowSwapToken public flowToken1;
     IFlowFactory public factory;
     ISuperfluid public host;
-    address public flowTokenProxy;
+    IFlowSwapERC20 public lp;
+    address public superRouter;
 
     mapping(address => Reciept) private swaps;
 
     uint256 public price0CumulativeLast;
     uint256 public price1CumulativeLast;
 
-    int112 public settledReserve0; // uses single storage slot, accessible via getReserves
-    int112 public settledReserve1; // uses single storage slot, accessible via getReserves
+    uint112 public settledReserve0; // uses single storage slot, accessible via getReserves
+    uint112 public settledReserve1; // uses single storage slot, accessible via getReserves
     uint32 public blockTimestampLast; // uses single storage slot, accessible via getReserves
 
-    int96 public token0GlobalFlowRate;
-    int96 public token1GlobalFlowRate;
+    uint96 public token0GlobalFlowRate;
+    uint96 public token1GlobalFlowRate;
 
-    function initialize(
-        ISuperfluid _host,
-        address _underlyingToken0,
-        address _underlyingToken1,
-        address _flowToken0,
-        address _flowToken1
-    ) external {
-        host = _host;
+    uint256 public kLast;
+    int256 public c0;
+    int256 public c1;
+    int256 public m0;
+    int256 public m1;
+
+    function initialize(InitParams memory params) external {
+        host = params.host;
+
+        superRouter = params.superRouter;
+
+        lp = IFlowSwapERC20(params.lp);
 
         cfaV1 = CFAv1Library.InitData(
-            _host,
-            IConstantFlowAgreementV1(address(_host.getAgreementClass(CFA_ID)))
+            host,
+            IConstantFlowAgreementV1(address(host.getAgreementClass(CFA_ID)))
         );
         factory = IFlowFactory(msg.sender);
 
-        token0 = ISuperToken(_underlyingToken0);
-        token1 = ISuperToken(_underlyingToken1);
+        token0 = ISuperToken(params.underlyingToken0);
+        token1 = ISuperToken(params.underlyingToken1);
 
-        flowToken0 = IFlowSwapToken(_flowToken0);
-        flowToken1 = IFlowSwapToken(_flowToken1);
-
-        uint256 configWord = SuperAppDefinitions.APP_LEVEL_FINAL |
-            // change from 'before agreement stuff to after agreement
-            SuperAppDefinitions.BEFORE_AGREEMENT_CREATED_NOOP |
-            SuperAppDefinitions.BEFORE_AGREEMENT_UPDATED_NOOP |
-            SuperAppDefinitions.BEFORE_AGREEMENT_TERMINATED_NOOP;
-
-        _host.registerApp(configWord);
-    }
-
-    function getReserves()
-        public
-        view
-        returns (
-            uint112 _reserve0,
-            uint112 _reserve1,
-            uint32 _blockTimestampLast
-        )
-    {
-        _reserve0 = reserve0();
-        _reserve1 = reserve1();
-        _blockTimestampLast = blockTimestampLast;
+        flowToken0 = IFlowSwapToken(params.flowToken0);
+        flowToken1 = IFlowSwapToken(params.flowToken1);
     }
 
     function _update(
@@ -100,18 +87,50 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
         uint32 timestamp = uint32(block.timestamp % 2**32);
         uint256 timeElapsed = uint256(timestamp) - uint256(blockTimestampLast);
 
-        settledReserve0 = int112(int256(_balance0));
-        settledReserve1 = int112(int256(_balance1));
+        settledReserve0 = _reserve0;
+        settledReserve1 = _reserve1;
 
-        emit Test1(_balance0, _balance1, _reserve0, _reserve1);
+        kLast = _reserve0 * _reserve1;
+
+        uint96 token0GlobalFlowRateIn = token0GlobalFlowRate;
+        uint96 token1GlobalFlowRateIn = token0GlobalFlowRate;
+        uint256 ratio0 = uint256(UQ112x112.encode(_reserve1).uqdiv(_reserve0));
+        uint256 ratio1 = uint256(UQ112x112.encode(_reserve0).uqdiv(_reserve1));
+        uint256 token0GlobalFlowRateOut = ratio1 * token1GlobalFlowRateIn;
+        uint256 token1GlobalFlowRateOut = ratio0 * token0GlobalFlowRateIn;
+
+        int256 token0NetFlowRate = int96(token0GlobalFlowRateIn) -
+            int256(token0GlobalFlowRateOut);
+        int256 token1NetFlowRate = int96(token1GlobalFlowRateIn) -
+            int256(token1GlobalFlowRateOut);
+
+        Vector memory token0FirstPoint = Vector({x: _reserve0, y: 0});
+        Vector memory token1FirstPoint = Vector({x: _reserve1, y: 0});
+
+        Vector memory token0SecondPoint = Vector({
+            x: _reserve0 + token0NetFlowRate,
+            y: 1
+        });
+
+        Vector memory token1SecondPoint = Vector({
+            x: _reserve1 + token1NetFlowRate,
+            y: 1
+        });
+
+        m0 =
+            (token0SecondPoint.y - token0FirstPoint.y) /
+            (token0SecondPoint.x - token0FirstPoint.x);
+        m1 =
+            (token1SecondPoint.y - token1FirstPoint.y) /
+            (token1SecondPoint.x - token1FirstPoint.x);
+
+        c0 = token0SecondPoint.y - m0 * token0SecondPoint.x;
+        c1 = token1SecondPoint.y - m1 * token1SecondPoint.x;
+
         if (timeElapsed > 0 && _reserve0 != 0 && _reserve1 != 0) {
             // * never overflows, and + overflow is desired
-            price0CumulativeLast +=
-                uint256(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) *
-                timeElapsed;
-            price1CumulativeLast +=
-                uint256(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) *
-                timeElapsed;
+            price0CumulativeLast += ratio0 * timeElapsed;
+            price1CumulativeLast += ratio1 * timeElapsed;
         }
         blockTimestampLast = timestamp;
     }
@@ -124,10 +143,10 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
         uint256 amount0 = balance0.sub(_reserve0);
         uint256 amount1 = balance1.sub(_reserve1);
 
-        uint256 _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
+        uint256 _totalSupply = lp.totalSupply(); // gas savings, must be defined here since totalSupply can update in _mintFee
         if (_totalSupply == 0) {
             liquidity = Math.sqrt(amount0.mul(amount1)).sub(MINIMUM_LIQUIDITY);
-            _mint(address(0), MINIMUM_LIQUIDITY); // permanently lock the first MINIMUM_LIQUIDITY tokens
+            lp.mint(address(0), MINIMUM_LIQUIDITY); // permanently lock the first MINIMUM_LIQUIDITY tokens
         } else {
             liquidity = Math.min(
                 amount0.mul(_totalSupply) / _reserve0,
@@ -135,7 +154,7 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
             );
         }
         require(liquidity > 0, 'UniswapV2: INSUFFICIENT_LIQUIDITY_MINTED');
-        _mint(to, liquidity);
+        lp.mint(to, liquidity);
 
         _update(balance0, balance1, _reserve0, _reserve1);
         emit Mint(msg.sender, liquidity, amount0, amount1);
@@ -149,16 +168,16 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
         (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
         uint256 balance0 = token0.balanceOf(address(this));
         uint256 balance1 = token1.balanceOf(address(this));
-        uint256 liquidity = balanceOf[address(this)];
+        uint256 liquidity = lp.balanceOf(address(this));
 
-        uint256 _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
+        uint256 _totalSupply = lp.totalSupply(); // gas savings, must be defined here since totalSupply can update in _mintFee
         amount0 = liquidity.mul(balance0) / _totalSupply; // using balances ensures pro-rata distribution
         amount1 = liquidity.mul(balance1) / _totalSupply; // using balances ensures pro-rata distribution
         require(
             amount0 > 0 && amount1 > 0,
             'UniswapV2: INSUFFICIENT_LIQUIDITY_BURNED'
         );
-        _burn(address(this), liquidity);
+        lp.burn(address(this), liquidity);
 
         address _token0 = address(token0);
         address _token1 = address(token1);
@@ -187,27 +206,26 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
     }
 
     /**
-     *   liquidate - liquidates a flow that does not match the flowswap's state
-     *   @param who - the address to be liquidated
-     *   @param token - the token that 'who' has altered externally
+     *   terminate - closes a swirl
+     *   @param ctx - id of the previously created flow
+     *   @param token - the supertoken being streamed in
      */
-    function liquidate(address who, address token) external {
-        (, int96 flowRate, , ) = cfa.getFlow(
+    function terminate(bytes calldata ctx, ISuperToken token)
+        external
+        onlySuperRouter
+        returns (bytes memory newCtx)
+    {
+        newCtx = ctx;
+        ISuperfluid.Context memory decompiledContext = host.decodeCtx(ctx);
+        address sender = decompiledContext.msgSender;
+        (, int96 flowRate, , ) = cfaV1.cfa.getFlow(
             ISuperToken(token),
-            who,
+            sender,
             address(this)
         );
-        if (flowRate != swaps[who].flowRate && swaps[who].active) {
-            // probably should check if the who is still flowwing so they can reclaim their money
-            // but for now if a change is made externally they will lose their deposit & their flow
-            // inside flowswap will stop even if they are still flowing to the protocol. i.e if they
-            // changed the amount being streamed outside of the protocols knowledge
-            uint256 _deposit = swaps[who].deposit;
-            swaps[who].active = false;
-            swaps[who].flowRate = 0;
-            swaps[who].deposit = 0;
-            _safeTransfer(token, msg.sender, _deposit);
-        }
+
+        swaps[sender].active = false;
+        swaps[sender].flowRate = 0;
     }
 
     /**
@@ -215,10 +233,13 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
      *   @param ctx - id of the previously created flow
      *   @param from - the supertoken being streamed in
      */
-    function createFlow(ISuperfluid.Context ctx, ISuperToken from)
-        internal
+    function createFlow(bytes calldata ctx, ISuperToken from)
+        external
+        onlySuperRouter
         returns (bytes memory newCtx)
     {
+        newCtx = ctx;
+
         (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
         ISuperfluid.Context memory decompiledContext = host.decodeCtx(ctx);
         address sender = decompiledContext.msgSender;
@@ -235,32 +256,29 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
         uint256 balance1 = token1.balanceOf(address(this));
         _update(balance0, balance1, _reserve0, _reserve1);
 
+        uint96 previousFlowRate = swaps[sender].flowRate;
+
         swaps[sender] = Reciept({
-            flowRate: flowRate,
+            flowRate: uint96(flowRate),
             active: true,
             priceCumulativeStart: getPriceCumulativeLast(address(from)),
             executed: block.timestamp
         });
 
-        token0GlobalFlowRate = ISuperToken(from) == token0
-            ? token0GlobalFlowRate + flowRate
-            : token0GlobalFlowRate;
-
-        token1GlobalFlowRate = ISuperToken(from) == token1
-            ? token1GlobalFlowRate + flowRate
-            : token1GlobalFlowRate;
+        if (ISuperToken(from) == token0) {
+            token0GlobalFlowRate =
+                token0GlobalFlowRate -
+                previousFlowRate +
+                uint96(flowRate);
+        } else {
+            token1GlobalFlowRate =
+                token1GlobalFlowRate -
+                previousFlowRate +
+                uint96(flowRate);
+        }
 
         emit Created(sender, token0GlobalFlowRate, token1GlobalFlowRate);
     }
-
-    // TODO
-    // function updateFlow(bytes32 flowId, bool flowDirection) external {
-    //     (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
-    //     ISuperToken from = flowDirection
-    //         ? ISuperToken(token0)
-    //         : ISuperToken(token1);
-    //     (, int96 flowRate, , ) = cfa.getFlow(from, msg.sender, address(this));
-    // }
 
     function swapOf(address who) external view returns (Reciept memory) {
         return swaps[who];
@@ -286,7 +304,9 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
                 uint256 rootK = Math.sqrt(uint256(reserve0()).mul(reserve1()));
                 uint256 rootKLast = Math.sqrt(_kLast);
                 if (rootK > rootKLast) {
-                    uint256 numerator = totalSupply.mul(rootK.sub(rootKLast));
+                    uint256 numerator = lp.totalSupply().mul(
+                        rootK.sub(rootKLast)
+                    );
                     uint256 denominator = rootK.mul(5).add(rootKLast);
                     liquidity = numerator / denominator;
                 }
@@ -295,25 +315,35 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
     }
 
     function reserve0() public view returns (uint112) {
+        uint256 timeElapsed = (block.timestamp - blockTimestampLast);
         return
             uint112(
-                uint256(
-                    settledReserve0 +
-                        token0GlobalFlowRate *
-                        int256(block.timestamp - blockTimestampLast)
-                )
+                timeElapsed == 0
+                    ? settledReserve0
+                    : (int256(timeElapsed) - c0) / m0
             );
     }
 
     function reserve1() public view returns (uint112) {
-        return
-            uint112(
-                uint256(
-                    settledReserve1 +
-                        token1GlobalFlowRate *
-                        int256(block.timestamp - blockTimestampLast)
-                )
-            );
+        uint256 timeElapsed = (block.timestamp - blockTimestampLast);
+        uint256 reserve = timeElapsed == 0
+            ? settledReserve1
+            : (timeElapsed - c1) / m1;
+        return uint112(reserve);
+    }
+
+    function getReserves()
+        public
+        view
+        returns (
+            uint112 _reserve0,
+            uint112 _reserve1,
+            uint32 _blockTimestampLast
+        )
+    {
+        _reserve0 = reserve0();
+        _reserve1 = reserve1();
+        _blockTimestampLast = blockTimestampLast;
     }
 
     function price0CumulativeNow() public view returns (uint256) {
@@ -332,7 +362,7 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
                 uint256(blockTimestampLast));
     }
 
-    function getPriceCumulativeLast(address token)
+    function getPriceCumulativeNow(address token)
         public
         view
         returns (uint256 priceCumulativeLast)
@@ -341,6 +371,18 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
             priceCumulativeLast = price1CumulativeNow();
         } else {
             priceCumulativeLast = price0CumulativeNow();
+        }
+    }
+
+    function getPriceCumulativeLast(address token)
+        public
+        view
+        returns (uint256 priceCumulativeLast)
+    {
+        if (token == address(token0)) {
+            priceCumulativeLast = price1CumulativeLast;
+        } else {
+            priceCumulativeLast = price0CumulativeLast;
         }
     }
 
@@ -366,58 +408,6 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
     }
 
     /**************************************************************************
-     * SuperApp Callbacks
-     *************************************************************************/
-
-    function afterAgreementCreated(
-        ISuperToken _superToken,
-        address _agreementClass,
-        bytes32, //_agreementId
-        bytes calldata, //_agreementData
-        bytes calldata, //_cbdata
-        bytes calldata _ctx
-    )
-        external
-        override
-        onlyExpected(_superToken, _agreementClass)
-        onlyHost
-        returns (bytes memory newCtx)
-    {
-        return createFlow(_ctx, _superToken);
-    }
-
-    function afterAgreementUpdated(
-        ISuperToken _superToken,
-        address _agreementClass,
-        bytes32, // _agreementId,
-        bytes calldata, // _agreementData,
-        bytes calldata, // _cbdata,
-        bytes calldata _ctx
-    )
-        external
-        override
-        onlyExpected(_superToken, _agreementClass)
-        onlyHost
-        returns (bytes memory newCtx)
-    {
-        return _updateOutflow(_ctx);
-    }
-
-    function afterAgreementTerminated(
-        ISuperToken _superToken,
-        address _agreementClass,
-        bytes32, // _agreementId,
-        bytes calldata, // _agreementData
-        bytes calldata, // _cbdata,
-        bytes calldata _ctx
-    ) external override onlyHost returns (bytes memory newCtx) {
-        // According to the app basic law, we should never revert in a termination callback
-        if (!_isPairToken(_superToken) || !_isCFAv1(_agreementClass))
-            return _ctx;
-        return _updateOutflow(_ctx);
-    }
-
-    /**************************************************************************
      * Private functions
      *************************************************************************/
     function _safeTransfer(
@@ -434,31 +424,19 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20, SuperAppBase {
         );
     }
 
-    function _isCFAv1(address agreementClass) private view returns (bool) {
-        return ISuperAgreement(agreementClass).agreementType() == CFA_ID;
-    }
-
-    function _isPairToken(ISuperToken superToken) private view returns (bool) {
-        return
-            address(superToken) == address(token0) ||
-            address(superToken) == address(token1);
-    }
-
-    /**************************************************************************
-     * Modifiers
-     *************************************************************************/
-
-    modifier onlyHost() {
+    modifier onlySuperRouter() {
         require(
-            msg.sender == address(cfaV1.host),
-            'RedirectAll: support only one host'
+            msg.sender == address(superRouter),
+            'FlowSwap: only super router'
         );
         _;
     }
 
-    modifier onlyExpected(ISuperToken superToken, address agreementClass) {
-        require(_isPairToken(superToken), 'RedirectAll: not accepted token');
-        require(_isCFAv1(agreementClass), 'RedirectAll: only CFAv1 supported');
-        _;
+    /**************************************************************************
+     * Getter functions
+     *************************************************************************/
+
+    function getCfa() external view returns (CFAv1Library.InitData memory) {
+        return cfaV1;
     }
 }

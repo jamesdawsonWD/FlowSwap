@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: AGPLv3
 pragma solidity >=0.8.0;
+
 interface IFlowSwapERC20 {
-    event Approval(address indexed owner, address indexed spender, uint256 value);
+    event Approval(
+        address indexed owner,
+        address indexed spender,
+        uint256 value
+    );
     event Transfer(address indexed from, address indexed to, uint256 value);
+
+    function initialize(address _host) external;
 
     function name() external pure returns (string memory);
 
@@ -14,11 +21,18 @@ interface IFlowSwapERC20 {
 
     function balanceOf(address owner) external view returns (uint256);
 
-    function allowance(address owner, address spender) external view returns (uint256);
+    function allowance(address owner, address spender)
+        external
+        view
+        returns (uint256);
+
+    function burn(address from, uint256 value) external returns (bool);
+
+    function transfer(address to, uint256 value) external returns (bool);
 
     function approve(address spender, uint256 value) external returns (bool);
 
-    function transfer(address to, uint256 value) external returns (bool);
+    function mint(address to, uint256 value) external returns (bool);
 
     function transferFrom(
         address from,

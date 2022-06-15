@@ -18,7 +18,7 @@ abstract contract FlowToken is IFlowToken {
     IFlowSwap internal _host;
 
     /// @dev Settled balance for the account
-    mapping(address => int256) internal _balances;
+    mapping(address => uint256) internal _balances;
 
     /// @dev Total supply
     uint256 internal _totalSupply;
@@ -57,22 +57,36 @@ abstract contract FlowToken is IFlowToken {
      * Real-time balance functions
      *************************************************************************/
 
+    function conversion(
+        uint256 flowrate,
+        uint256 start,
+        uint256 end,
+        uint256 priceCumulativeLast,
+        uint256 priceCumulativeStart
+    ) public view returns (uint256 amount) {
+        uint256 timeElapsed = (end - start);
+        uint256 totalFlowed = flowrate * timeElapsed;
+        uint256 averagePrice = (priceCumulativeLast - priceCumulativeStart) /
+            timeElapsed;
+        amount = averagePrice * totalFlowed;
+    }
+
     /// @dev ISuperfluidToken.realtimeBalanceOf implementation
     function realtimeBalanceOf(
         address account,
         uint256 timestamp,
         uint256 priceCumulativeLast
-    ) public view override returns (int256 availableBalance) {
+    ) public view override returns (uint256 availableBalance) {
         availableBalance = _balances[account];
         IFlowSwap.Reciept memory reciept = _host.swapOf(account);
         if (reciept.flowRate > 0) {
-            uint256 timeElapsed = (timestamp - reciept.executed);
-            uint256 totalFlowed = uint256(
-                reciept.flowRate * int256(timeElapsed)
+            availableBalance = conversion(
+                uint256(reciept.flowRate),
+                reciept.executed,
+                timestamp,
+                priceCumulativeLast,
+                reciept.priceCumulativeStart
             );
-            uint256 averagePrice = (priceCumulativeLast -
-                reciept.priceCumulativeStart) / timeElapsed;
-            availableBalance = int256(averagePrice * totalFlowed);
         }
     }
 
@@ -81,10 +95,10 @@ abstract contract FlowToken is IFlowToken {
         public
         view
         override
-        returns (int256 availableBalance)
+        returns (uint256 availableBalance)
     {
         uint256 timestamp = _host.getNow();
-        uint256 priceCumulativeLast = _host.getPriceCumulativeLast(
+        uint256 priceCumulativeLast = _host.getPriceCumulativeNow(
             getUnderlyingToken()
         );
         availableBalance = realtimeBalanceOf(
@@ -108,30 +122,30 @@ abstract contract FlowToken is IFlowToken {
      *************************************************************************/
 
     function _mint(address account, uint256 amount) internal {
-        _balances[account] = _balances[account] + amount.toInt256();
+        _balances[account] = _balances[account] + amount;
         _totalSupply = _totalSupply + amount;
     }
 
     function _burn(address account, uint256 amount) internal {
-        int256 availableBalance = realtimeBalanceOf(
+        uint256 availableBalance = realtimeBalanceOf(
             account,
             _host.getNow(),
             _host.getPriceCumulativeLast(getUnderlyingToken())
         );
         require(
-            availableBalance >= amount.toInt256(),
+            availableBalance >= amount,
             'SuperfluidToken: burn amount exceeds balance'
         );
-        _balances[account] = _balances[account] - amount.toInt256();
+        _balances[account] = _balances[account] - amount;
         _totalSupply = _totalSupply - amount;
     }
 
     function _move(
         address from,
         address to,
-        int256 amount
+        uint256 amount
     ) internal {
-        int256 availableBalance = realtimeBalanceOf(
+        uint256 availableBalance = realtimeBalanceOf(
             from,
             _host.getNow(),
             _host.getPriceCumulativeLast(getUnderlyingToken())

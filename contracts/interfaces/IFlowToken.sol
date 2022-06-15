@@ -16,6 +16,15 @@ interface IFlowToken {
     function getHost() external view returns (address host);
 
     function getUnderlyingToken() external view returns (address);
+
+    function conversion(
+        uint256 flowrate,
+        uint256 start,
+        uint256 end,
+        uint256 priceCumulativeLast,
+        uint256 priceCumulativeStart
+    ) external view returns (uint256 amount);
+
     /**************************************************************************
      * Real-time balance functions
      *************************************************************************/
@@ -26,7 +35,12 @@ interface IFlowToken {
      * @param timestamp Time of balance
      * @return availableBalance Real-time balance
      */
-    function realtimeBalanceOf(address account, uint256 timestamp, uint256 priceCumulativeLast) external view returns (int256 availableBalance);
+    function realtimeBalanceOf(
+        address account,
+        uint256 timestamp,
+        uint256 priceCumulativeLast
+    ) external view returns (uint256 availableBalance);
+
     function settleBalance(address account) external returns (uint256);
 
     /**
@@ -35,5 +49,8 @@ interface IFlowToken {
      * @param account for the query
      * @return availableBalance Real-time balance
      */
-    function realtimeBalanceOfNow(address account) external view returns (int256 availableBalance);
+    function realtimeBalanceOfNow(address account)
+        external
+        view
+        returns (uint256 availableBalance);
 }

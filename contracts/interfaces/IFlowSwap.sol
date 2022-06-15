@@ -2,24 +2,45 @@
 pragma solidity >=0.8.0;
 import {ISuperToken, ISuperfluid} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol';
 import {IConstantFlowAgreementV1} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/agreements/IConstantFlowAgreementV1.sol';
+import {CFAv1Library} from '../superfluid/CFAv1Library.sol';
 
 interface IFlowSwap {
     struct Reciept {
-        int96 flowRate;
-        uint256 deposit;
+        uint96 flowRate;
         bool active;
         uint256 executed;
         uint256 priceCumulativeStart;
     }
 
+    struct InitParams {
+        ISuperfluid host;
+        address lp;
+        address underlyingToken0;
+        address underlyingToken1;
+        address flowToken0;
+        address flowToken1;
+        address superRouter;
+    }
+
     /**************************************************************************
      * Basic information
      *************************************************************************/
-    function createFlow(address sender, address from) external;
 
     function reserve0() external view returns (uint112);
 
     function reserve1() external view returns (uint112);
+
+    function reserve0Naked(uint256 totalSupply) external view returns (uint112);
+
+    function reserve1Naked(uint256 totalSupply) external view returns (uint112);
+
+    function token0() external view returns (ISuperToken);
+
+    function token1() external view returns (ISuperToken);
+
+    function getCfa() external view returns (CFAv1Library.InitData memory);
+
+    function CFA_ID() external view returns (bytes32);
 
     function getReserves()
         external
@@ -34,13 +55,25 @@ interface IFlowSwap {
 
     function blockTimestampLast() external view returns (uint32);
 
-    function initialize(
-        ISuperfluid _host,
-        address underlyingToken0,
-        address underlyingToken1,
-        address _flowToken0,
-        address _flowToken1
-    ) external;
+    function createFlow(bytes calldata ctx, ISuperToken from)
+        external
+        returns (bytes memory newCtx);
+
+    function terminate(bytes calldata ctx, ISuperToken token)
+        external
+        returns (bytes memory newCtx);
+
+    function initialize(InitParams memory params) external;
+
+    function getGlobalFlowrate(address token)
+        external
+        view
+        returns (uint256 globalFlowrate);
+
+    function getPriceCumulativeNow(address token)
+        external
+        view
+        returns (uint256 priceCumulativeLast);
 
     function getPriceCumulativeLast(address token)
         external
@@ -71,8 +104,8 @@ interface IFlowSwap {
     );
     event Created(
         address indexed sender,
-        int96 token0FlowRate,
-        int96 token1FlowRate
+        uint96 token0FlowRate,
+        uint96 token1FlowRate
     );
     event Burn(
         address indexed sender,

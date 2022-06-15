@@ -4,20 +4,28 @@ import {Clones} from '@openzeppelin/contracts/proxy/Clones.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 import './interfaces/IFlowFactory.sol';
 import './interfaces/IFlowSwap.sol';
+import './interfaces/IFlowSwapERC20.sol';
 import {IFlowSwapToken} from './interfaces/IFlowSwapToken.sol';
 import {ISuperToken, ISuperfluid} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol';
+import './FlowSwapSuperRouter.sol';
 
 contract FlowFactory is Ownable, IFlowFactory {
     address[] public override allPairs;
     address public flowSwapAddress;
     address public flowTokenProxy;
+    address public flowSwapERC20;
     address public override feeTo;
     address public override feeToSetter;
     address public override migrator;
     ISuperfluid public host;
     mapping(address => mapping(address => address)) public override getPair;
 
-    constructor(ISuperfluid _host, address _flowSwapAddress, address _flowTokenProxy) {
+    constructor(
+        ISuperfluid _host,
+        address _flowSwapERC20,
+        address _flowSwapAddress,
+        address _flowTokenProxy
+    ) {
         host = _host;
         flowSwapAddress = _flowSwapAddress;
         flowTokenProxy = _flowTokenProxy;
@@ -47,16 +55,42 @@ contract FlowFactory is Ownable, IFlowFactory {
         ); // single check is sufficient
         address _flowToken0 = Clones.clone(flowTokenProxy);
         address _flowToken1 = Clones.clone(flowTokenProxy);
+        address _flowSwapERC20 = Clones.clone(flowSwapERC20);
 
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
         pair = Clones.cloneDeterministic(flowSwapAddress, salt);
 
-        ISuperToken _token0 = ISuperToken(token0); 
-        ISuperToken _token1 = ISuperToken(token1); 
-    
-        IFlowSwapToken(_flowToken0).initialize(_token0, _token0.decimals(), _token0.name(), _token0.symbol(), pair);
-        IFlowSwapToken(_flowToken1).initialize(_token1, _token1.decimals(), _token1.name(), _token1.symbol(), pair);
-        IFlowSwap(pair).initialize(host, token0, token1, _flowToken0, _flowToken1);
+        ISuperToken _token0 = ISuperToken(token0);
+        ISuperToken _token1 = ISuperToken(token1);
+
+        FlowSwapSuperRouter superRouter = new FlowSwapSuperRouter(host, pair);
+
+        IFlowSwapToken(_flowToken0).initialize(
+            _token0,
+            _token0.decimals(),
+            _token0.name(),
+            _token0.symbol(),
+            pair
+        );
+        IFlowSwapToken(_flowToken1).initialize(
+            _token1,
+            _token1.decimals(),
+            _token1.name(),
+            _token1.symbol(),
+            pair
+        );
+        IFlowSwapERC20(_flowSwapERC20).initialize(pair);
+
+        IFlowSwap.InitParams memory params = IFlowSwap.InitParams({
+            host: host,
+            lp: _flowSwapERC20,
+            underlyingToken0: token0,
+            underlyingToken1: token1,
+            flowToken0: _flowToken0,
+            flowToken1: _flowToken1,
+            superRouter: address(superRouter)
+        });
+        IFlowSwap(pair).initialize(params);
 
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair; // populate mapping in the reverse direction
