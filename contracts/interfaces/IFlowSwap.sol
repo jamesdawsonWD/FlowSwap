@@ -30,10 +30,6 @@ interface IFlowSwap {
 
     function reserve1() external view returns (uint112);
 
-    function reserve0Naked(uint256 totalSupply) external view returns (uint112);
-
-    function reserve1Naked(uint256 totalSupply) external view returns (uint112);
-
     function token0() external view returns (ISuperToken);
 
     function token1() external view returns (ISuperToken);
@@ -64,11 +60,6 @@ interface IFlowSwap {
         returns (bytes memory newCtx);
 
     function initialize(InitParams memory params) external;
-
-    function getGlobalFlowrate(address token)
-        external
-        view
-        returns (uint256 globalFlowrate);
 
     function getPriceCumulativeNow(address token)
         external

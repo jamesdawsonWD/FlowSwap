@@ -14,7 +14,7 @@ import {ISuperfluid, SuperAppDefinitions, ISuperToken, ISuperAgreement} from '@s
 import {IConstantFlowAgreementV1} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/agreements/IConstantFlowAgreementV1.sol';
 import {CFAv1Library} from './superfluid/CFAv1Library.sol';
 
-contract FlowSwap is IFlowSwap {
+contract FlowSwap is IFlowSwap, FlowSwapERC20 {
     using UQ112x112 for uint224;
     using SafeMath for uint256;
     using CFAv1Library for CFAv1Library.InitData;
@@ -90,47 +90,54 @@ contract FlowSwap is IFlowSwap {
         settledReserve0 = _reserve0;
         settledReserve1 = _reserve1;
 
-        kLast = _reserve0 * _reserve1;
-
-        uint96 token0GlobalFlowRateIn = token0GlobalFlowRate;
-        uint96 token1GlobalFlowRateIn = token0GlobalFlowRate;
-        uint256 ratio0 = uint256(UQ112x112.encode(_reserve1).uqdiv(_reserve0));
-        uint256 ratio1 = uint256(UQ112x112.encode(_reserve0).uqdiv(_reserve1));
-        uint256 token0GlobalFlowRateOut = ratio1 * token1GlobalFlowRateIn;
-        uint256 token1GlobalFlowRateOut = ratio0 * token0GlobalFlowRateIn;
-
-        int256 token0NetFlowRate = int96(token0GlobalFlowRateIn) -
-            int256(token0GlobalFlowRateOut);
-        int256 token1NetFlowRate = int96(token1GlobalFlowRateIn) -
-            int256(token1GlobalFlowRateOut);
-
-        Vector memory token0FirstPoint = Vector({x: _reserve0, y: 0});
-        Vector memory token1FirstPoint = Vector({x: _reserve1, y: 0});
-
-        Vector memory token0SecondPoint = Vector({
-            x: _reserve0 + token0NetFlowRate,
-            y: 1
-        });
-
-        Vector memory token1SecondPoint = Vector({
-            x: _reserve1 + token1NetFlowRate,
-            y: 1
-        });
-
-        m0 =
-            (token0SecondPoint.y - token0FirstPoint.y) /
-            (token0SecondPoint.x - token0FirstPoint.x);
-        m1 =
-            (token1SecondPoint.y - token1FirstPoint.y) /
-            (token1SecondPoint.x - token1FirstPoint.x);
-
-        c0 = token0SecondPoint.y - m0 * token0SecondPoint.x;
-        c1 = token1SecondPoint.y - m1 * token1SecondPoint.x;
-
         if (timeElapsed > 0 && _reserve0 != 0 && _reserve1 != 0) {
+            int256 token0NetFlowRate = int96(token0GlobalFlowRate) -
+                int256(
+                    uint256(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) *
+                        token0GlobalFlowRate
+                );
+            int256 token1NetFlowRate = int96(token0GlobalFlowRate) -
+                int256(
+                    uint256(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) *
+                        token0GlobalFlowRate
+                );
+
+            Vector memory token0FirstPoint = Vector({
+                x: int256(uint256(_reserve0)),
+                y: 0
+            });
+            Vector memory token1FirstPoint = Vector({
+                x: int256(uint256(_reserve1)),
+                y: 0
+            });
+
+            Vector memory token0SecondPoint = Vector({
+                x: int256(uint256(_reserve0)) + token0NetFlowRate,
+                y: 1
+            });
+
+            Vector memory token1SecondPoint = Vector({
+                x: int256(uint256(_reserve1)) + token1NetFlowRate,
+                y: 1
+            });
+
+            m0 =
+                (token0SecondPoint.y - token0FirstPoint.y) /
+                (token0SecondPoint.x - token0FirstPoint.x);
+            m1 =
+                (token1SecondPoint.y - token1FirstPoint.y) /
+                (token1SecondPoint.x - token1FirstPoint.x);
+
+            c0 = token0SecondPoint.y - m0 * token0SecondPoint.x;
+            c1 = token1SecondPoint.y - m1 * token1SecondPoint.x;
+
             // * never overflows, and + overflow is desired
-            price0CumulativeLast += ratio0 * timeElapsed;
-            price1CumulativeLast += ratio1 * timeElapsed;
+            price0CumulativeLast +=
+                uint256(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) *
+                timeElapsed;
+            price1CumulativeLast +=
+                uint256(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) *
+                timeElapsed;
         }
         blockTimestampLast = timestamp;
     }
@@ -143,10 +150,10 @@ contract FlowSwap is IFlowSwap {
         uint256 amount0 = balance0.sub(_reserve0);
         uint256 amount1 = balance1.sub(_reserve1);
 
-        uint256 _totalSupply = lp.totalSupply(); // gas savings, must be defined here since totalSupply can update in _mintFee
+        uint256 _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         if (_totalSupply == 0) {
             liquidity = Math.sqrt(amount0.mul(amount1)).sub(MINIMUM_LIQUIDITY);
-            lp.mint(address(0), MINIMUM_LIQUIDITY); // permanently lock the first MINIMUM_LIQUIDITY tokens
+            _mint(address(0), MINIMUM_LIQUIDITY); // permanently lock the first MINIMUM_LIQUIDITY tokens
         } else {
             liquidity = Math.min(
                 amount0.mul(_totalSupply) / _reserve0,
@@ -154,9 +161,9 @@ contract FlowSwap is IFlowSwap {
             );
         }
         require(liquidity > 0, 'UniswapV2: INSUFFICIENT_LIQUIDITY_MINTED');
-        lp.mint(to, liquidity);
+        _mint(to, liquidity);
 
-        _update(balance0, balance1, _reserve0, _reserve1);
+        // _update(balance0, balance1, _reserve0, _reserve1);
         emit Mint(msg.sender, liquidity, amount0, amount1);
     }
 
@@ -168,16 +175,16 @@ contract FlowSwap is IFlowSwap {
         (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
         uint256 balance0 = token0.balanceOf(address(this));
         uint256 balance1 = token1.balanceOf(address(this));
-        uint256 liquidity = lp.balanceOf(address(this));
+        uint256 liquidity = balanceOf(address(this));
 
-        uint256 _totalSupply = lp.totalSupply(); // gas savings, must be defined here since totalSupply can update in _mintFee
+        uint256 _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         amount0 = liquidity.mul(balance0) / _totalSupply; // using balances ensures pro-rata distribution
         amount1 = liquidity.mul(balance1) / _totalSupply; // using balances ensures pro-rata distribution
         require(
             amount0 > 0 && amount1 > 0,
             'UniswapV2: INSUFFICIENT_LIQUIDITY_BURNED'
         );
-        lp.burn(address(this), liquidity);
+        _burn(address(this), liquidity);
 
         address _token0 = address(token0);
         address _token1 = address(token1);
@@ -250,7 +257,7 @@ contract FlowSwap is IFlowSwap {
             address(this)
         );
 
-        require(flowRate > 0, 'FlowSwap: Stream must exist');
+        // require(flowRate > 0, 'FlowSwap: Stream must exist');
 
         uint256 balance0 = token0.balanceOf(address(this));
         uint256 balance1 = token1.balanceOf(address(this));
@@ -304,9 +311,7 @@ contract FlowSwap is IFlowSwap {
                 uint256 rootK = Math.sqrt(uint256(reserve0()).mul(reserve1()));
                 uint256 rootKLast = Math.sqrt(_kLast);
                 if (rootK > rootKLast) {
-                    uint256 numerator = lp.totalSupply().mul(
-                        rootK.sub(rootKLast)
-                    );
+                    uint256 numerator = totalSupply.mul(rootK.sub(rootKLast));
                     uint256 denominator = rootK.mul(5).add(rootKLast);
                     liquidity = numerator / denominator;
                 }
@@ -316,19 +321,17 @@ contract FlowSwap is IFlowSwap {
 
     function reserve0() public view returns (uint112) {
         uint256 timeElapsed = (block.timestamp - blockTimestampLast);
-        return
-            uint112(
-                timeElapsed == 0
-                    ? settledReserve0
-                    : (int256(timeElapsed) - c0) / m0
-            );
+        uint256 reserve = timeElapsed == 0 || settledReserve0 == 0
+            ? settledReserve0
+            : uint112(int112((int256(timeElapsed) - c0) / m0));
+        return uint112(reserve);
     }
 
     function reserve1() public view returns (uint112) {
         uint256 timeElapsed = (block.timestamp - blockTimestampLast);
-        uint256 reserve = timeElapsed == 0
+        uint256 reserve = timeElapsed == 0 || settledReserve1 == 0
             ? settledReserve1
-            : (timeElapsed - c1) / m1;
+            : uint112(int112((int256(timeElapsed) - c1) / m1));
         return uint112(reserve);
     }
 

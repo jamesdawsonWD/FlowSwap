@@ -79,7 +79,6 @@ contract FlowFactory is Ownable, IFlowFactory {
             _token1.symbol(),
             pair
         );
-        IFlowSwapERC20(_flowSwapERC20).initialize(pair);
 
         IFlowSwap.InitParams memory params = IFlowSwap.InitParams({
             host: host,

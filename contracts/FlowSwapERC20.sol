@@ -6,7 +6,6 @@ import {SafeMath} from '@openzeppelin/contracts/utils/math/SafeMath.sol';
 contract FlowSwapERC20 is IFlowSwapERC20 {
     using SafeMath for uint256;
 
-    address public host;
     string public constant name = 'Uniswap V2';
     string public constant symbol = 'UNI-V2';
     uint8 public constant decimals = 18;
@@ -36,10 +35,6 @@ contract FlowSwapERC20 is IFlowSwapERC20 {
                 address(this)
             )
         );
-    }
-
-    function initialize(address _host) external {
-        host = _host;
     }
 
     function _mint(address to, uint256 value) internal {
@@ -73,11 +68,7 @@ contract FlowSwapERC20 is IFlowSwapERC20 {
         emit Transfer(from, to, value);
     }
 
-    function balanceOf(address account)
-        public
-        view
-        returns (uint256)
-    {
+    function balanceOf(address account) public view returns (uint256) {
         return balances[account];
     }
 
@@ -86,16 +77,7 @@ contract FlowSwapERC20 is IFlowSwapERC20 {
         return true;
     }
 
-    function mint(address to, uint256 value) external onlyHost returns (bool) {
-        _mint(to, value);
-        return true;
-    }
-
-    function burn(address from, uint256 value)
-        external
-        onlyHost
-        returns (bool)
-    {
+    function burn(address from, uint256 value) external returns (bool) {
         _burn(from, value);
         return true;
     }
@@ -151,13 +133,5 @@ contract FlowSwapERC20 is IFlowSwapERC20 {
             'UniswapV2: INVALID_SIGNATURE'
         );
         _approve(owner, spender, value);
-    }
-
-    modifier onlyHost() {
-        require(
-            host == msg.sender,
-            'SuperfluidToken: Only host contract allowed'
-        );
-        _;
     }
 }

@@ -240,6 +240,9 @@ describe('FlowSwap Contract', () => {
             expect(await pair1.token0()).to.equal(token0);
             expect(await pair1.token1()).to.equal(token1);
         });
+        it('FlowSwap(Pair): Should be deployed and have a superrouter set', async () => {
+            expect(await pair1.superRouter()).to.not.equal(addressZero);
+        });
         it('FlowSwap(Pair): Should of created two FlowSwapTokens with correct underlying supertokens', async () => {
             expect(flowSwapToken0.address).to.not.equal(addressZero);
             expect(flowSwapToken1.address).to.not.equal(addressZero);
@@ -306,26 +309,26 @@ describe('FlowSwap Contract', () => {
             // );
         });
 
-        it('[CreateFlow]: Should trigger create flow when a flow is created by superfluid', async () => {
+        it('[CreateFlow]: Should trigger create flow when a flow is created to the superrouter', async () => {
             const flowRate = '1000000';
             const amount0 = ethers.utils.parseEther('100').toString();
             const amount1 = ethers.utils.parseEther('200').toString();
-            // await addLiquidityManual(
-            //     pair1,
-            //     superToken0,
-            //     superToken1,
-            //     amount0,
-            //     amount1,
-            //     owner
-            // );
+            await addLiquidityManual(
+                pair1,
+                superToken0,
+                superToken1,
+                amount0,
+                amount1,
+                owner
+            );
 
-            // await sf.cfaV1
-            //     .createFlow({
-            //         flowRate,
-            //         receiver: pair1.address,
-            //         superToken: superToken0.address,
-            //     })
-            //     .exec(owner);
+            await sf.cfaV1
+                .createFlow({
+                    flowRate,
+                    receiver: await pair1.superRouter(),
+                    superToken: superToken0.address,
+                })
+                .exec(owner);
 
             // const receipt = await pair1.swapOf(owner.address);
             // const globalFlowRate0 = await pair1.token0GlobalFlowRate();
