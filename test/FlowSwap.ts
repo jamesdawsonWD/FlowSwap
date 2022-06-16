@@ -31,6 +31,7 @@ import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
 import ERC20MockJson from '../artifacts/contracts/test/ERC20Mock.sol/ERC20Mock.json';
 import { addLiquidityManual } from './helpers/flowSwapRouter';
 import { Result } from 'ethers/lib/utils';
+import { provideSuperTokens } from './helpers/superHelpers';
 
 // Superfluid deploying helpers
 /* eslint @typescript-eslint/no-var-requires: "off" */
@@ -172,32 +173,24 @@ describe('FlowSwap Contract', () => {
         );
         await flowSwapRouter.deployed();
 
-        // Providing Tokens for test
-        await mockToken0
-            .connect(owner)
-            .mint(owner.address, ethers.utils.parseEther('1000'));
-
-        await mockToken1
-            .connect(owner)
-            .mint(owner.address, ethers.utils.parseEther('1000'));
-
-        await mockToken0
-            .connect(owner)
-            .approve(superToken0.address, ethers.utils.parseEther('1000'));
-
-        await mockToken1
-            .connect(owner)
-            .approve(superToken1.address, ethers.utils.parseEther('1000'));
-
-        const superToken0UpgradeOperation = superToken0.upgrade({
-            amount: ethers.utils.parseEther('1000').toString(),
-        });
-        const superToken1UpgradeOperation = superToken1.upgrade({
-            amount: ethers.utils.parseEther('1000').toString(),
-        });
-
-        await superToken0UpgradeOperation.exec(owner);
-        await superToken1UpgradeOperation.exec(owner);
+        await provideSuperTokens(
+            mockToken0,
+            mockToken1,
+            '1000',
+            '1000',
+            superToken0,
+            superToken1,
+            owner
+        );
+        await provideSuperTokens(
+            mockToken0,
+            mockToken1,
+            '1000',
+            '1000',
+            superToken0,
+            superToken1,
+            addr1
+        );
     });
 
     // Take base snapshot before each test
@@ -322,6 +315,14 @@ describe('FlowSwap Contract', () => {
                 owner
             );
 
+            const settledReserve0_1 = await pair1.settledReserve0();
+            const settledReserve1_1 = await pair1.settledReserve1();
+            const reserve0_1 = await pair1.reserve0();
+            const reserve1_1 = await pair1.reserve1();
+
+            console.log(settledReserve0_1, settledReserve1_1);
+            console.log(reserve0_1, reserve1_1);
+
             await sf.cfaV1
                 .createFlow({
                     flowRate,
@@ -329,6 +330,41 @@ describe('FlowSwap Contract', () => {
                     superToken: superToken0.address,
                 })
                 .exec(owner);
+
+            const settledReserve0 = await pair1.settledReserve0();
+            const settledReserve1 = await pair1.settledReserve1();
+            const reserve0 = await pair1.reserve0();
+            const reserve1 = await pair1.reserve1();
+
+            console.log(settledReserve0, settledReserve1);
+            console.log(reserve0, reserve1);
+
+            // await advanceTime(86400);
+
+            // await addLiquidityManual(
+            //     pair1,
+            //     superToken0,
+            //     superToken1,
+            //     amount0,
+            //     amount1,
+            //     addr1
+            // );
+            // await advanceTime(86400);
+
+            // const settledReserve0_2 = await pair1.settledReserve0();
+            // const settledReserve1_2 = await pair1.settledReserve1();
+            // const reserve0_2 = await pair1.reserve0();
+            // const reserve1_2 = await pair1.reserve1();
+
+            // console.log(settledReserve0_2, settledReserve1_2);
+            // console.log(reserve0_2, reserve1_2);
+            // await sf.cfaV1
+            //     .createFlow({
+            //         flowRate,
+            //         receiver: await pair1.superRouter(),
+            //         superToken: superToken0.address,
+            //     })
+            //     .exec(addr1);
 
             // const receipt = await pair1.swapOf(owner.address);
             // const globalFlowRate0 = await pair1.token0GlobalFlowRate();

@@ -37,7 +37,6 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
     IFlowSwapToken public flowToken1;
     IFlowFactory public factory;
     ISuperfluid public host;
-    IFlowSwapERC20 public lp;
     address public superRouter;
 
     mapping(address => Reciept) private swaps;
@@ -63,8 +62,6 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
 
         superRouter = params.superRouter;
 
-        lp = IFlowSwapERC20(params.lp);
-
         cfaV1 = CFAv1Library.InitData(
             host,
             IConstantFlowAgreementV1(address(host.getAgreementClass(CFA_ID)))
@@ -87,56 +84,59 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         uint32 timestamp = uint32(block.timestamp % 2**32);
         uint256 timeElapsed = uint256(timestamp) - uint256(blockTimestampLast);
 
-        settledReserve0 = _reserve0;
-        settledReserve1 = _reserve1;
+        settledReserve0 = uint112(_balance0);
+        settledReserve1 = uint112(_balance1);
 
         if (timeElapsed > 0 && _reserve0 != 0 && _reserve1 != 0) {
             int256 token0NetFlowRate = int96(token0GlobalFlowRate) -
                 int256(
-                    uint256(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) *
-                        token0GlobalFlowRate
+                    uint256(
+                        UQ112x112.encode(settledReserve0).uqdiv(settledReserve1)
+                    ) * token0GlobalFlowRate
                 );
             int256 token1NetFlowRate = int96(token0GlobalFlowRate) -
                 int256(
-                    uint256(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) *
-                        token0GlobalFlowRate
+                    uint256(
+                        UQ112x112.encode(settledReserve1).uqdiv(settledReserve0)
+                    ) * token0GlobalFlowRate
                 );
 
-            Vector memory token0FirstPoint = Vector({
-                x: int256(uint256(_reserve0)),
-                y: 0
-            });
-            Vector memory token1FirstPoint = Vector({
-                x: int256(uint256(_reserve1)),
-                y: 0
-            });
+            
 
-            Vector memory token0SecondPoint = Vector({
-                x: int256(uint256(_reserve0)) + token0NetFlowRate,
-                y: 1
-            });
-
-            Vector memory token1SecondPoint = Vector({
-                x: int256(uint256(_reserve1)) + token1NetFlowRate,
-                y: 1
-            });
-
+            // m = (y2 - y1) / (x2 - x1)
             m0 =
-                (token0SecondPoint.y - token0FirstPoint.y) /
-                (token0SecondPoint.x - token0FirstPoint.x);
+                (1 ether) /
+                (int256(uint256(settledReserve0)) +
+                    token0NetFlowRate -
+                    int256(uint256(settledReserve0)));
             m1 =
-                (token1SecondPoint.y - token1FirstPoint.y) /
-                (token1SecondPoint.x - token1FirstPoint.x);
+                (1 ether) /
+                (int256(uint256(settledReserve1)) +
+                    token1NetFlowRate -
+                    int256(uint256(settledReserve1)));
 
-            c0 = token0SecondPoint.y - m0 * token0SecondPoint.x;
-            c1 = token1SecondPoint.y - m1 * token1SecondPoint.x;
+            // c = y - mx
+            c0 =
+                1 ether -
+                m0 *
+                int256(uint256(settledReserve1)) +
+                token0NetFlowRate;
+            c1 =
+                1 ether -
+                m1 *
+                int256(uint256(settledReserve0)) +
+                token1NetFlowRate;
 
             // * never overflows, and + overflow is desired
             price0CumulativeLast +=
-                uint256(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) *
+                uint256(
+                    UQ112x112.encode(settledReserve0).uqdiv(settledReserve1)
+                ) *
                 timeElapsed;
             price1CumulativeLast +=
-                uint256(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) *
+                uint256(
+                    UQ112x112.encode(settledReserve1).uqdiv(settledReserve0)
+                ) *
                 timeElapsed;
         }
         blockTimestampLast = timestamp;
@@ -163,7 +163,7 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         require(liquidity > 0, 'UniswapV2: INSUFFICIENT_LIQUIDITY_MINTED');
         _mint(to, liquidity);
 
-        // _update(balance0, balance1, _reserve0, _reserve1);
+        _update(balance0, balance1, _reserve0, _reserve1);
         emit Mint(msg.sender, liquidity, amount0, amount1);
     }
 
@@ -172,30 +172,27 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
         external
         returns (uint256 amount0, uint256 amount1)
     {
-        (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
-        uint256 balance0 = token0.balanceOf(address(this));
-        uint256 balance1 = token1.balanceOf(address(this));
-        uint256 liquidity = balanceOf(address(this));
-
-        uint256 _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
-        amount0 = liquidity.mul(balance0) / _totalSupply; // using balances ensures pro-rata distribution
-        amount1 = liquidity.mul(balance1) / _totalSupply; // using balances ensures pro-rata distribution
-        require(
-            amount0 > 0 && amount1 > 0,
-            'UniswapV2: INSUFFICIENT_LIQUIDITY_BURNED'
-        );
-        _burn(address(this), liquidity);
-
-        address _token0 = address(token0);
-        address _token1 = address(token1);
-        //unwrap token and then transfer
-        _safeTransfer(_token0, to, amount0);
-        _safeTransfer(_token1, to, amount1);
-        balance0 = ISuperToken(_token0).balanceOf(address(this));
-        balance1 = ISuperToken(_token1).balanceOf(address(this));
-
-        _update(balance0, balance1, _reserve0, _reserve1);
-        emit Burn(msg.sender, amount0, amount1, to);
+        // (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
+        // uint256 balance0 = token0.balanceOf(address(this));
+        // uint256 balance1 = token1.balanceOf(address(this));
+        // uint256 liquidity = balanceOf(address(this));
+        // uint256 _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
+        // amount0 = liquidity.mul(balance0) / _totalSupply; // using balances ensures pro-rata distribution
+        // amount1 = liquidity.mul(balance1) / _totalSupply; // using balances ensures pro-rata distribution
+        // require(
+        //     amount0 > 0 && amount1 > 0,
+        //     'UniswapV2: INSUFFICIENT_LIQUIDITY_BURNED'
+        // );
+        // _burn(address(this), liquidity);
+        // address _token0 = address(token0);
+        // address _token1 = address(token1);
+        // //unwrap token and then transfer
+        // _safeTransfer(_token0, to, amount0);
+        // _safeTransfer(_token1, to, amount1);
+        // balance0 = ISuperToken(_token0).balanceOf(address(this));
+        // balance1 = ISuperToken(_token1).balanceOf(address(this));
+        // _update(balance0, balance1, _reserve0, _reserve1);
+        // emit Burn(msg.sender, amount0, amount1, to);
     }
 
     /**
@@ -321,7 +318,10 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
 
     function reserve0() public view returns (uint112) {
         uint256 timeElapsed = (block.timestamp - blockTimestampLast);
-        uint256 reserve = timeElapsed == 0 || settledReserve0 == 0
+        uint256 reserve = timeElapsed == 0 ||
+            settledReserve0 == 0 ||
+            c0 == 0 ||
+            m0 == 0
             ? settledReserve0
             : uint112(int112((int256(timeElapsed) - c0) / m0));
         return uint112(reserve);
@@ -329,7 +329,10 @@ contract FlowSwap is IFlowSwap, FlowSwapERC20 {
 
     function reserve1() public view returns (uint112) {
         uint256 timeElapsed = (block.timestamp - blockTimestampLast);
-        uint256 reserve = timeElapsed == 0 || settledReserve1 == 0
+        uint256 reserve = timeElapsed == 0 ||
+            settledReserve1 == 0 ||
+            c1 == 0 ||
+            m1 == 0
             ? settledReserve1
             : uint112(int112((int256(timeElapsed) - c1) / m1));
         return uint112(reserve);
