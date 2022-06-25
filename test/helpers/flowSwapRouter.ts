@@ -2,11 +2,12 @@ import {
     IBaseSuperTokenParams,
     SuperToken,
 } from '@superfluid-finance/sdk-core';
-import { BigNumber } from 'ethers';
+import { BigNumber, Signer } from 'ethers';
 import { FlowSwap } from '../../typechain-types';
 import BN from 'bn.js';
 import { retrieveEventParam, sqrt } from '.';
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
+import { Provider } from '.pnpm/@ethersproject/abstract-provider@5.6.0/node_modules/@ethersproject/abstract-provider';
 
 export const addLiquidityManual = async (
     pair: FlowSwap,
@@ -25,20 +26,26 @@ export const addLiquidityManual = async (
     );
 
     await token0
-        .transfer({
+        .approve({
             receiver: pair.address,
             amount: amount0,
         } as IBaseSuperTokenParams)
         .exec(owner);
 
     await token1
-        .transfer({
+        .approve({
             receiver: pair.address,
             amount: amount1,
         } as IBaseSuperTokenParams)
         .exec(owner);
 
-    const tx = await pair.mint(owner.address);
+    // const allownace0 = await token0.allowance({
+    //     owner: owner.address,
+    //     spender: pair.address,
+    //     providerOrSigner: owner.provider as Provider,
+    // });
+
+    const tx = await pair.mint(owner.address, amount0, amount1);
     const acctualLiquidity = await retrieveEventParam(tx, 'Mint', 'liquidity');
 
     return { expectedLiquidty, acctualLiquidity };

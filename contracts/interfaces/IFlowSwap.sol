@@ -7,8 +7,8 @@ import {CFAv1Library} from '../superfluid/CFAv1Library.sol';
 interface IFlowSwap {
     struct Reciept {
         uint96 flowRate;
-        bool active;
-        uint256 executed;
+        address from;
+        uint32 executed;
         uint256 priceCumulativeStart;
     }
 
@@ -19,7 +19,6 @@ interface IFlowSwap {
         address underlyingToken1;
         address flowToken0;
         address flowToken1;
-        address superRouter;
     }
 
     /**************************************************************************
@@ -34,9 +33,17 @@ interface IFlowSwap {
 
     function token1() external view returns (ISuperToken);
 
+    function host() external view returns (ISuperfluid);
+
     function getCfa() external view returns (CFAv1Library.InitData memory);
 
     function CFA_ID() external view returns (bytes32);
+
+    function createFlow(
+        int96 flowRate,
+        address sender,
+        ISuperToken from
+    ) external;
 
     function getReserves()
         external
@@ -50,14 +57,6 @@ interface IFlowSwap {
     function swapOf(address _user) external view returns (Reciept memory);
 
     function blockTimestampLast() external view returns (uint32);
-
-    function createFlow(bytes calldata ctx, ISuperToken from)
-        external
-        returns (bytes memory newCtx);
-
-    function terminate(bytes calldata ctx, ISuperToken token)
-        external
-        returns (bytes memory newCtx);
 
     function initialize(InitParams memory params) external;
 
@@ -77,7 +76,11 @@ interface IFlowSwap {
 
     function price1CumulativeLast() external view returns (uint256);
 
-    function mint(address to) external returns (uint256 liquidity);
+    function mint(
+        address to,
+        uint256 amount0,
+        uint256 amount1
+    ) external returns (uint256 liquidity);
 
     function burn(address to)
         external
@@ -112,7 +115,12 @@ interface IFlowSwap {
         uint256 amount1Out,
         address indexed to
     );
-    event Sync(uint112 reserve0, uint112 reserve1);
+    event Sync(
+        uint112 reserve0,
+        uint112 reserve1,
+        uint32 timeElapsed,
+        uint32 blocktimestampLast
+    );
 
     event Test(
         address indexed sender,

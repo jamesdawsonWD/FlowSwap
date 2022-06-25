@@ -9,6 +9,7 @@ interface IFlowSwapERC20 {
     );
     event Transfer(address indexed from, address indexed to, uint256 value);
 
+    function initialize(address _pair) external;
 
     function name() external pure returns (string memory);
 
@@ -26,6 +27,8 @@ interface IFlowSwapERC20 {
         returns (uint256);
 
     function burn(address from, uint256 value) external returns (bool);
+
+    function mint(address to, uint256 value) external returns (bool);
 
     function transfer(address to, uint256 value) external returns (bool);
 

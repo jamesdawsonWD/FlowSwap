@@ -62,8 +62,11 @@
   },
   "dependencies": {
     "@superfluid-finance/ethereum-contracts": "^1.2.2",
+    "@uniswap/lib": "^4.0.1-alpha",
     "@uniswap/v3-core": "^1.0.1",
     "@uniswap/v3-periphery": "^1.4.1",
-    "graphql": "^16.5.0"
+    "graphql": "^16.5.0",
+    "i": "^0.3.7",
+    "npm": "^8.13.1"
   }
 }

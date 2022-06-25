@@ -6,8 +6,8 @@ import './interfaces/IFlowFactory.sol';
 import './interfaces/IFlowSwap.sol';
 import './interfaces/IFlowSwapERC20.sol';
 import {IFlowSwapToken} from './interfaces/IFlowSwapToken.sol';
-import {ISuperToken, ISuperfluid} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol';
-import './FlowSwapSuperRouter.sol';
+import {ISuperToken, ISuperfluid, SuperAppDefinitions} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol';
+import {ISuperApp} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperApp.sol';
 
 contract FlowFactory is Ownable, IFlowFactory {
     address[] public override allPairs;
@@ -20,13 +20,20 @@ contract FlowFactory is Ownable, IFlowFactory {
     ISuperfluid public host;
     mapping(address => mapping(address => address)) public override getPair;
 
-    constructor(
+    uint256 private configWord =
+        SuperAppDefinitions.APP_LEVEL_FINAL |
+            SuperAppDefinitions.BEFORE_AGREEMENT_CREATED_NOOP |
+            SuperAppDefinitions.BEFORE_AGREEMENT_UPDATED_NOOP |
+            SuperAppDefinitions.BEFORE_AGREEMENT_TERMINATED_NOOP;
+
+    function initialize(
         ISuperfluid _host,
         address _flowSwapERC20,
         address _flowSwapAddress,
         address _flowTokenProxy
-    ) {
+    ) public onlyOwner {
         host = _host;
+        flowSwapERC20 = _flowSwapERC20;
         flowSwapAddress = _flowSwapAddress;
         flowTokenProxy = _flowTokenProxy;
     }
@@ -63,8 +70,8 @@ contract FlowFactory is Ownable, IFlowFactory {
         ISuperToken _token0 = ISuperToken(token0);
         ISuperToken _token1 = ISuperToken(token1);
 
-        FlowSwapSuperRouter superRouter = new FlowSwapSuperRouter(host, pair);
-
+        IFlowSwapERC20(_flowSwapERC20).initialize(pair);
+        
         IFlowSwapToken(_flowToken0).initialize(
             _token0,
             _token0.decimals(),
@@ -79,6 +86,7 @@ contract FlowFactory is Ownable, IFlowFactory {
             _token1.symbol(),
             pair
         );
+        host.registerAppByFactory(ISuperApp(pair), configWord);
 
         IFlowSwap.InitParams memory params = IFlowSwap.InitParams({
             host: host,
@@ -86,8 +94,7 @@ contract FlowFactory is Ownable, IFlowFactory {
             underlyingToken0: token0,
             underlyingToken1: token1,
             flowToken0: _flowToken0,
-            flowToken1: _flowToken1,
-            superRouter: address(superRouter)
+            flowToken1: _flowToken1
         });
         IFlowSwap(pair).initialize(params);
 

@@ -2,12 +2,14 @@ pragma solidity 0.8.13;
 
 import './interfaces/IFlowSwapERC20.sol';
 import {SafeMath} from '@openzeppelin/contracts/utils/math/SafeMath.sol';
+import {IFlowSwap} from './interfaces/IFlowSwap.sol';
 
 contract FlowSwapERC20 is IFlowSwapERC20 {
     using SafeMath for uint256;
 
     string public constant name = 'Uniswap V2';
     string public constant symbol = 'UNI-V2';
+    address public pair;
     uint8 public constant decimals = 18;
     uint256 public totalSupply;
     mapping(address => uint256) public balances;
@@ -19,7 +21,8 @@ contract FlowSwapERC20 is IFlowSwapERC20 {
         0x6e71edae12b1b97f4d1f60370fef10105fa2faae0126114a169c64845d6126c9;
     mapping(address => uint256) public nonces;
 
-    constructor() {
+    function initialize(address _pair) public {
+        pair = _pair;
         uint256 chainId;
         assembly {
             chainId := chainid()
@@ -77,8 +80,17 @@ contract FlowSwapERC20 is IFlowSwapERC20 {
         return true;
     }
 
-    function burn(address from, uint256 value) external returns (bool) {
+    function burn(address from, uint256 value)
+        external
+        onlyPair
+        returns (bool)
+    {
         _burn(from, value);
+        return true;
+    }
+
+    function mint(address to, uint256 value) external onlyPair returns (bool) {
+        _mint(to, value);
         return true;
     }
 
@@ -133,5 +145,10 @@ contract FlowSwapERC20 is IFlowSwapERC20 {
             'UniswapV2: INVALID_SIGNATURE'
         );
         _approve(owner, spender, value);
+    }
+
+    modifier onlyPair() {
+        require(msg.sender == pair, 'FlowSwap: only pair');
+        _;
     }
 }

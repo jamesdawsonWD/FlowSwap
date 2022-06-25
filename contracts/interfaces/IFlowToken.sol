@@ -19,8 +19,8 @@ interface IFlowToken {
 
     function conversion(
         uint256 flowrate,
-        uint256 start,
-        uint256 end,
+        uint32 start,
+        uint32 end,
         uint256 priceCumulativeLast,
         uint256 priceCumulativeStart
     ) external view returns (uint256 amount);
@@ -37,7 +37,7 @@ interface IFlowToken {
      */
     function realtimeBalanceOf(
         address account,
-        uint256 timestamp,
+        uint32 timestamp,
         uint256 priceCumulativeLast
     ) external view returns (uint256 availableBalance);
 
