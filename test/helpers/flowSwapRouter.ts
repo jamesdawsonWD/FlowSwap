@@ -7,7 +7,6 @@ import { FlowSwap } from '../../typechain-types';
 import BN from 'bn.js';
 import { retrieveEventParam, sqrt } from '.';
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
-import { Provider } from '.pnpm/@ethersproject/abstract-provider@5.6.0/node_modules/@ethersproject/abstract-provider';
 
 export const addLiquidityManual = async (
     pair: FlowSwap,

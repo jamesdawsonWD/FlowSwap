@@ -1,11 +1,13 @@
 pragma solidity 0.8.13;
-import '@uniswap/lib/contracts/libraries/FixedPoint.sol';
 
-contract UQ112x112Test {
+library FixedPoint {
     uint224 constant Q112 = 2**112;
     uint8 public constant RESOLUTION = 112;
     struct uq112x112 {
         uint224 _x;
+    }
+    struct uq144x112 {
+        uint256 _x;
     }
 
     // encode a uint112 as a UQ112x112
@@ -20,5 +22,22 @@ contract UQ112x112Test {
 
     function decode(uq112x112 memory self) internal pure returns (uint112) {
         return uint112(self._x >> RESOLUTION);
+    }
+
+    function decode144(uq144x112 memory self) internal pure returns (uint144) {
+        return uint144(self._x >> RESOLUTION);
+    }
+
+    function mul(uq112x112 memory self, uint256 y)
+        internal
+        pure
+        returns (uq144x112 memory)
+    {
+        uint256 z = 0;
+        require(
+            y == 0 || (z = self._x * y) / y == self._x,
+            'FixedPoint::mul: overflow'
+        );
+        return uq144x112(z);
     }
 }

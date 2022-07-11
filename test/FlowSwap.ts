@@ -1,17 +1,9 @@
 import { expect } from 'chai';
-import BN from 'bn.js';
-import { ethers, waffle } from 'hardhat';
+import { ethers } from 'hardhat';
+import { retrieveEventParam, sortAddresses, addressZero } from './helpers';
+import { BigNumber, Contract, Signer } from 'ethers';
 import {
-    retrieveEventParam,
-    sortAddresses,
-    addressZero,
-    decodeEvents,
-} from './helpers';
-import { BigNumber, BytesLike, Contract, Signer } from 'ethers';
-import {
-    advanceBlock,
     advanceTime,
-    advanceTimeAndBlock,
     revertToSnapshot,
     takeSnapshot,
 } from './helpers/timetraveler';
@@ -25,12 +17,13 @@ import {
     FlowSwapToken,
     FlowSwap,
     FlowSwapERC20,
-    UQ112x112Test,
+    FixedPoint,
+    FixedPointTest,
+    PriceTest,
 } from '../typechain-types';
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
 import ERC20MockJson from '../artifacts/contracts/test/ERC20Mock.sol/ERC20Mock.json';
 import { addLiquidityManual } from './helpers/flowSwapRouter';
-import { Result } from 'ethers/lib/utils';
 import { provideSuperTokens } from './helpers/superHelpers';
 
 // Superfluid deploying helpers
@@ -62,7 +55,9 @@ describe('FlowSwap Contract', () => {
     let cfa: ConstantFlowAgreementV1;
     let superSigner: Signer;
     let snapshotId: string | Error;
-    let uq112x112: UQ112x112Test;
+    let fixedPointLib: FixedPoint;
+    let fixedPointLibTest: FixedPointTest;
+    let priceTest: PriceTest;
     const errorHandler = (err: Error) => {
         if (err) throw err;
     };
@@ -87,14 +82,25 @@ describe('FlowSwap Contract', () => {
         });
 
         cfa = sf.cfaV1;
-
+        const FixedPointLib = await ethers.getContractFactory('FixedPoint');
+        const FixedPointTest = await ethers.getContractFactory(
+            'FixedPointTest'
+        );
+        fixedPointLibTest = await FixedPointTest.deploy();
+        fixedPointLib = await FixedPointLib.deploy();
         const FlowFactory = await ethers.getContractFactory('FlowFactory');
-        const FlowSwap = await ethers.getContractFactory('FlowSwap');
+        const PriceTest = await ethers.getContractFactory('PriceTest');
+        const FlowSwap = await ethers.getContractFactory('FlowSwap', {
+            libraries: {
+                FixedPoint: fixedPointLib.address,
+            },
+        });
+        priceTest = await PriceTest.deploy();
         const FlowTokenProxy = await ethers.getContractFactory('FlowSwapToken');
-        const UQ112x112Test = await ethers.getContractFactory('UQ112x112Test');
         const FlowSwapERC20Proxy = await ethers.getContractFactory(
             'FlowSwapERC20'
         );
+
         flowFactory = await FlowFactory.deploy();
         await flowFactory.deployed();
 
@@ -106,9 +112,6 @@ describe('FlowSwap Contract', () => {
 
         flowTokenProxy = await FlowTokenProxy.deploy();
         await flowTokenProxy.deployed();
-
-        uq112x112 = await UQ112x112Test.deploy();
-        await uq112x112.deployed();
 
         await flowFactory.initialize(
             sf.host.contract.address,
@@ -374,9 +377,117 @@ describe('FlowSwap Contract', () => {
             // todo
         });
         it('[realtimeBalanceOf]: Should retrieve the correct balance', async () => {
-            const flowRate0 = '100000000000000';
-            const amount0 = ethers.utils.parseEther('100').toString();
-            const amount1 = ethers.utils.parseEther('200').toString();
+            const flowRate0 = BigNumber.from(ethers.utils.parseEther('1'))
+                .div('86400')
+                .toString();
+            const amount0 = ethers.utils.parseEther('400').toString();
+            const amount1 = ethers.utils.parseEther('330').toString();
+            await addLiquidityManual(
+                pair1,
+                superToken0,
+                superToken1,
+                amount0,
+                amount1,
+                owner
+            );
+            await addLiquidityManual(
+                pair1,
+                superToken0,
+                superToken1,
+                amount0,
+                amount1,
+                owner
+            );
+
+            const time1 = await pair1.blockTimestampLast();
+            const priceCUmulativeStart = await pair1.price0CumulativeLast();
+            await sf.cfaV1
+                .createFlow({
+                    flowRate: flowRate0,
+                    receiver: pair1.address,
+                    superToken: superToken0.address,
+                })
+                .exec(owner);
+            const price0CumulativeBefore = await pair1.price0CumulativeLast();
+            const price1CumulativeBefore = await pair1.price1CumulativeLast();
+            const receipt = await pair1.swapOf(owner.address);
+
+            console.log(
+                await priceTest.getAveragePrice(
+                    price0CumulativeBefore,
+                    priceCUmulativeStart,
+                    receipt.executed - time1
+                )
+            );
+
+            await advanceTime(ONE_DAY);
+            await pair1.sync();
+
+            const price0CumulativeAfter = await pair1.price0CumulativeLast();
+            const price1CumulativeAfter = await pair1.price1CumulativeLast();
+            const time2 = await pair1.blockTimestampLast();
+
+            console.log(
+                BigNumber.from(
+                    await fixedPointLibTest.decode144Uint(
+                        price0CumulativeAfter.sub(price0CumulativeBefore)
+                    )
+                ).div(time2 - receipt.executed)
+            );
+            const timeAfter = await pair1.blockTimestampLast();
+
+            const timeElapsed = timeAfter - receipt.executed;
+
+            const expectedPrice0 = price0CumulativeAfter.sub(
+                price0CumulativeBefore
+            );
+
+            console.log(
+                await fixedPointLibTest.decode144Uint(
+                    expectedPrice0.div(timeElapsed).toString()
+                )
+            );
+
+            const balance1 = await flowSwapToken1.balanceOf(owner.address);
+            const balance0 = await flowSwapToken0.balanceOf(owner.address);
+
+            const flowActualBalance1 = await superToken1.balanceOf({
+                account: pair1.address,
+                providerOrSigner: owner,
+            });
+            const flowActualBalance0 = await superToken0.balanceOf({
+                account: pair1.address,
+                providerOrSigner: owner,
+            });
+
+            console.log(
+                ethers.utils.formatEther(
+                    BigNumber.from(flowActualBalance0)
+                        .sub(ethers.utils.parseEther('40').toString())
+                        .toString()
+                ),
+                flowActualBalance1.toString()
+            );
+            const reserve1 = await pair1.reserve1();
+
+            console.log(
+                ethers.utils.formatEther(reserve1.toString()),
+                ethers.utils.formatEther(
+                    BigNumber.from(flowActualBalance1).sub(balance1)
+                )
+            );
+            console.log(ethers.utils.formatEther(balance1));
+            console.log(ethers.utils.formatEther(flowActualBalance1));
+            expect(reserve1.toString()).to.equal(
+                BigNumber.from(flowActualBalance1).sub(balance1)
+            );
+        });
+        it('[Terminate]: Should terminate a stream when cancled through super app', async () => {
+            const flowRate0 = BigNumber.from(ethers.utils.parseEther('1'))
+                .div('86400')
+                .toString();
+            const amount0 = ethers.utils.parseEther('400').toString();
+            const amount1 = ethers.utils.parseEther('330').toString();
             await addLiquidityManual(
                 pair1,
                 superToken0,
@@ -397,29 +508,99 @@ describe('FlowSwap Contract', () => {
             await advanceTime(ONE_DAY);
             await pair1.sync();
 
-            const balance1 = await flowSwapToken1.balanceOf(owner.address);
-            const balance0 = await flowSwapToken0.balanceOf(owner.address);
-
-            const flowActualBalance = await superToken1.balanceOf({
-                account: pair1.address,
+            await sf.cfaV1
+                .deleteFlow({
+                    sender: owner.address,
+                    receiver: pair1.address,
+                    superToken: superToken0.address,
+                })
+                .exec(owner);
+            // * @param superToken the superToken of the agreement
+            // * @param sender the sender of the flow
+            // * @param receiver the receiver of the flow
+            // * @param providerOrSigner a provider or signer object
+            const acctualFlowRate = await sf.cfaV1.getFlow({
+                superToken: superToken0.address,
+                sender: owner.address,
+                receiver: pair1.address,
                 providerOrSigner: owner,
             });
-            const reserve1 = await pair1.reserve1();
 
-            console.log(balance1, flowActualBalance);
-            expect(reserve1.toString()).to.equal(
-                BigNumber.from(flowActualBalance).sub(balance1)
+            const receipt = await pair1.swapOf(owner.address);
+
+            expect(acctualFlowRate.flowRate).to.equal('0');
+            expect(receipt.flowRate).to.equal('0');
+        });
+        it('[Claim]: Should claim the correct amount of streamed data', async () => {
+            const flowRate0 = BigNumber.from(ethers.utils.parseEther('1'))
+                .div('86400')
+                .toString();
+            const amount0 = ethers.utils.parseEther('400').toString();
+            const amount1 = ethers.utils.parseEther('330').toString();
+            await addLiquidityManual(
+                pair1,
+                superToken0,
+                superToken1,
+                amount0,
+                amount1,
+                owner
             );
-        });
-        it('[Terminate]: Should terminate a stream when cancled through super app', async () => {
-            // todo
-        });
-        it('[CreateFlow]: Should create a FlowSwap and stream back the correct balance', async () => {
-            // todo
+
+            await sf.cfaV1
+                .createFlow({
+                    flowRate: flowRate0,
+                    receiver: pair1.address,
+                    superToken: superToken0.address,
+                })
+                .exec(owner);
+
+            await advanceTime(ONE_DAY);
+            await pair1.sync();
+
+            const balanceBefore = await superToken0.balanceOf({
+                account: owner.address,
+                providerOrSigner: owner,
+            });
+
+            const flowBalanceBefore = await flowSwapToken1.balanceOf(
+                owner.address
+            );
+
+            const pairflowBalanceStart = await flowSwapToken1.balanceOf(
+                pair1.address
+            );
+
+            expect(pairflowBalanceStart).to.equal('0');
+
+            console.log(ethers.utils.formatEther(balanceBefore));
+            console.log(ethers.utils.formatEther(flowBalanceBefore));
+            await flowSwapToken1.transfer(pair1.address, flowBalanceBefore);
+            const pairflowBalanceBefore = await flowSwapToken1.balanceOf(
+                pair1.address
+            );
+
+            expect(flowBalanceBefore).to.equal(pairflowBalanceBefore);
+
+            await pair1.claim(owner.address);
+
+            const flowBalanceAfter = await flowSwapToken1.balanceOf(
+                owner.address
+            );
+
+            expect(flowBalanceAfter).to.equal('0');
+
+            const balanceAfter = await superToken0.balanceOf({
+                account: owner.address,
+                providerOrSigner: owner,
+            });
+
+            expect(
+                BigNumber.from(balanceBefore).add(flowBalanceBefore).toString()
+            ).to.equal(balanceAfter);
         });
         it('[PriceCumulative0]: Should create the correct average price', async () => {
-            const amount0 = ethers.utils.parseEther('1').toString();
-            const amount1 = ethers.utils.parseEther('2').toString();
+            const amount0 = ethers.utils.parseEther('100').toString();
+            const amount1 = ethers.utils.parseEther('200').toString();
 
             await addLiquidityManual(
                 pair1,
@@ -449,15 +630,6 @@ describe('FlowSwap Contract', () => {
             const expectedReserve1 = BigNumber.from(amount1).mul(2);
             expect(reserve0.toString()).to.equal(expectedReserve0);
             expect(reserve1.toString()).to.equal(expectedReserve1);
-            const encoded0 = await uq112x112.encode(amount0);
-            const encoded1 = await uq112x112.encode(amount1);
-            const timeElapsedStartToMid = timeMid - timeStart;
-
-            const price0 = await uq112x112.uqdiv(
-                encoded1.toString(),
-                BigNumber.from(amount0).mul(2)
-            );
-            const price1 = await uq112x112.uqdiv(encoded0.toString(), amount1);
 
             const expectedPrice0CumulativeStart = BigNumber.from(amount1)
                 .div(amount0)
@@ -467,9 +639,6 @@ describe('FlowSwap Contract', () => {
                 .mul(100);
             expect(price0CumulativeStart.toString()).to.equal(
                 expectedPrice0CumulativeStart
-            );
-            expect(price1CumulativeStart.toString()).to.equal(
-                price1.mul(timeElapsedStartToMid)
             );
 
             await advanceTime(100);
@@ -489,37 +658,9 @@ describe('FlowSwap Contract', () => {
             const timeEnd = await pair1.blockTimestampLast();
             const reserve0End = await pair1.reserve0();
             const reserve1End = await pair1.reserve1();
-            const encoded0End = await uq112x112.encode(reserve0.toString());
-            const encoded1End = await uq112x112.encode(reserve1.toString());
+
             const timeElapsedMidToEnd = timeEnd - timeMid;
 
-            const price0End = await uq112x112.uqdiv(
-                encoded1End.toString(),
-                reserve0End.toString()
-            );
-            const price1End = await uq112x112.uqdiv(
-                encoded0End.toString(),
-                reserve1End.toString()
-            );
-
-            const expectedPrice0CumulativeEnd = price0CumulativeStart.add(
-                price0End.mul(timeElapsedMidToEnd)
-            );
-            const expectedPrice1CumulativeEnd = price1CumulativeStart.add(
-                price1End.mul(timeElapsedMidToEnd)
-            );
-
-            const averagePrice0 = expectedPrice0CumulativeEnd.sub(
-                price0CumulativeStart
-            );
-
-            console.log(averagePrice0.div(timeElapsedMidToEnd));
-            expect(price0CumulativeEnd.toString()).to.equal(
-                expectedPrice0CumulativeEnd
-            );
-            expect(price1CumulativeEnd.toString()).to.equal(
-                expectedPrice1CumulativeEnd
-            );
             // const price0CumulativeMid = await pair1.price0CumulativeLast();
             // const price1CumulativeMid = await pair1.price1CumulativeLast();
             // const timeEnd = await pair1.blockTimestampLast();
@@ -545,8 +686,10 @@ describe('FlowSwap Contract', () => {
             // );
         });
         it('[getPriceCumulativeLast]: Should get the correct price cumulative', async () => {
-            const flowRate0 = '100000000000000';
-            const amount0 = ethers.utils.parseEther('100').toString();
+            const flowRate0 = BigNumber.from(ethers.utils.parseEther('1'))
+                .div('86400')
+                .toString();
+            const amount0 = ethers.utils.parseEther('20').toString();
             const amount1 = ethers.utils.parseEther('200').toString();
             await addLiquidityManual(
                 pair1,
@@ -585,7 +728,9 @@ describe('FlowSwap Contract', () => {
             );
         });
         it('[Conversion]: Formula should convert correctly', async () => {
-            const flowRate = '100000000000000';
+            const flowRate = BigNumber.from(ethers.utils.parseEther('1'))
+                .div('86400')
+                .toString();
             const amount0 = ethers.utils.parseEther('100').toString();
             const amount1 = ethers.utils.parseEther('200').toString();
             await addLiquidityManual(

@@ -4,10 +4,10 @@ pragma solidity 0.8.13;
 import {IFlowToken} from './interfaces/IFlowToken.sol';
 import {IFlowSwap} from './interfaces/IFlowSwap.sol';
 import {ISuperToken} from '@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol';
-import {UQ112x112} from './libraries/UQ112x112.sol';
+// import {UQ112x112} from './libraries/UQ112x112.sol';
 
 import {SafeCast} from '@openzeppelin/contracts/utils/math/SafeCast.sol';
-import '@uniswap/lib/contracts/libraries/FixedPoint.sol';
+import './libraries/FixedPoint.sol';
 
 abstract contract FlowToken is IFlowToken {
     bytes32 private constant _REWARD_ADDRESS_CONFIG_KEY =
@@ -15,13 +15,15 @@ abstract contract FlowToken is IFlowToken {
 
     using SafeCast for uint256;
     using SafeCast for int256;
-    using UQ112x112 for uint224;
-    using FixedPoint for FixedPoint.uq112x112;
+    // using UQ112x112 for uint224;
+    using FixedPoint for *;
     /// @dev Superfluid contract
     IFlowSwap internal _host;
+    
 
     /// @dev Settled balance for the account
     mapping(address => uint256) internal _balances;
+    mapping(address => int256) internal _unsettledAmount;
 
     /// @dev Total supply
     uint256 internal _totalSupply;
@@ -107,8 +109,8 @@ abstract contract FlowToken is IFlowToken {
     {
         uint32 timestamp = _host.blockTimestampLast();
         uint256 priceCumulativeLast = _underlyingToken == _host.token0()
-            ? _host.price0CumulativeLast()
-            : _host.price1CumulativeLast();
+            ? _host.price1CumulativeLast()
+            : _host.price0CumulativeLast();
         availableBalance = realtimeBalanceOf(
             account,
             timestamp,
@@ -122,7 +124,11 @@ abstract contract FlowToken is IFlowToken {
         onlyHost
         returns (uint256)
     {
-        _balances[account] = realtimeBalanceOfNow(account);
+        uint256 balance = realtimeBalanceOfNow(account);
+        _totalSupply = _totalSupply + balance - _balances[account];
+        _balances[account] = balance;
+
+        return _balances[account];
     }
 
     /**************************************************************************
@@ -135,11 +141,8 @@ abstract contract FlowToken is IFlowToken {
     }
 
     function _burn(address account, uint256 amount) internal {
-        uint256 availableBalance = realtimeBalanceOf(
-            account,
-            _host.blockTimestampLast(),
-            _host.getPriceCumulativeLast(getUnderlyingToken())
-        );
+        uint256 availableBalance = realtimeBalanceOfNow(account);
+
         require(
             availableBalance >= amount,
             'SuperfluidToken: burn amount exceeds balance'
@@ -153,11 +156,7 @@ abstract contract FlowToken is IFlowToken {
         address to,
         uint256 amount
     ) internal {
-        uint256 availableBalance = realtimeBalanceOf(
-            from,
-            _host.blockTimestampLast(),
-            _host.getPriceCumulativeLast(getUnderlyingToken())
-        );
+        uint256 availableBalance = realtimeBalanceOfNow(from);
         require(
             availableBalance >= amount,
             'SuperfluidToken: move amount exceeds balance'

@@ -7,7 +7,7 @@ import {IFlowSwapToken} from './interfaces/IFlowSwapToken.sol';
 import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {Clones} from '@openzeppelin/contracts/proxy/Clones.sol';
 import {SafeMath} from '@openzeppelin/contracts/utils/math/SafeMath.sol';
-import {UQ112x112} from './libraries/UQ112x112.sol';
+import {FixedPoint} from './libraries/FixedPoint.sol';
 import {Math} from './libraries/Math.sol';
 import {FlowSwapERC20} from './FlowSwapERC20.sol';
 import {IFlowSwapERC20} from './interfaces/IFlowSwapERC20.sol';
@@ -17,9 +17,10 @@ import {CFAv1Library} from './superfluid/CFAv1Library.sol';
 import {SuperAppBase} from '@superfluid-finance/ethereum-contracts/contracts/apps/SuperAppBase.sol';
 
 contract FlowSwap is IFlowSwap, SuperAppBase {
-    using UQ112x112 for uint224;
+    using FixedPoint for uint224;
     using SafeMath for uint256;
     using CFAv1Library for CFAv1Library.InitData;
+    using FixedPoint for FixedPoint.uq112x112;
 
     uint256 public constant MINIMUM_LIQUIDITY = 10**3;
     bytes32 public constant CFA_ID =
@@ -71,10 +72,10 @@ contract FlowSwap is IFlowSwap, SuperAppBase {
         if (timeElapsed > 0 && _reserve0 != 0 && _reserve1 != 0) {
             // * never overflows, and + overflow is desired
             price0CumulativeLast +=
-                uint256(UQ112x112.encode(_reserve1).uqdiv(_reserve0)) *
+                uint256(FixedPoint.encode(_reserve1).uqdiv(_reserve0)) *
                 timeElapsed;
             price1CumulativeLast +=
-                uint256(UQ112x112.encode(_reserve0).uqdiv(_reserve1)) *
+                uint256(FixedPoint.encode(_reserve0).uqdiv(_reserve1)) *
                 timeElapsed;
         }
         kLast = uint256(settledReserve0) * settledReserve1;
@@ -135,7 +136,7 @@ contract FlowSwap is IFlowSwap, SuperAppBase {
 
     /**
      *   createFlow - takes a previosuly created superfluid flow and creates a flowswap
-     *   @param flowRate - id of the previously created flow
+     *   @param flowRate - id of the previousy created flow
      *   @param sender - id of the previously created flow
      *   @param from - the supertoken being streamed in
      */
@@ -144,9 +145,9 @@ contract FlowSwap is IFlowSwap, SuperAppBase {
         address sender,
         ISuperToken from
     ) public {
-        _settlePending();
-
         (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
+
+        _settlePending();
 
         require(flowRate > 0, 'FlowSwap: Stream must exist');
 
@@ -169,8 +170,8 @@ contract FlowSwap is IFlowSwap, SuperAppBase {
             flowRate: uint96(flowRate),
             from: address(from),
             priceCumulativeStart: from == token0
-                ? price0CumulativeLast
-                : price1CumulativeLast,
+                ? price1CumulativeLast
+                : price0CumulativeLast,
             executed: uint32(block.timestamp % 2**32)
         });
 
@@ -182,12 +183,12 @@ contract FlowSwap is IFlowSwap, SuperAppBase {
         uint256 amount0,
         uint256 amount1
     ) external returns (uint256 liquidity) {
-        // _settlePending();
-
         token0.transferFrom(msg.sender, address(this), amount0);
         token1.transferFrom(msg.sender, address(this), amount1);
 
         (uint112 _reserve0, uint112 _reserve1, ) = getReserves(); // gas savings
+
+        _settlePending();
 
         uint256 _totalSupply = lpToken.totalSupply(); // gas savings, must be defined here since totalSupply can update in _mintFee
         if (_totalSupply == 0) {
@@ -250,8 +251,13 @@ contract FlowSwap is IFlowSwap, SuperAppBase {
 
         uint256 balance0 = flowToken0.balanceOf(address(this));
         uint256 balance1 = flowToken1.balanceOf(address(this));
+
         flowToken0.burn(balance0, '');
         flowToken1.burn(balance1, '');
+
+        flowToken0.settleBalance(to);
+        flowToken1.settleBalance(to);
+
         _safeTransfer(address(token0), to, balance0);
         _safeTransfer(address(token1), to, balance1);
 
@@ -261,9 +267,8 @@ contract FlowSwap is IFlowSwap, SuperAppBase {
     /**
      *   terminate - closes a swirl
      *   @param ctx - id of the previously created flow
-     *   @param token - the supertoken being streamed in
      */
-    function terminate(bytes calldata ctx, ISuperToken token)
+    function terminate(bytes calldata ctx)
         internal
         returns (bytes memory newCtx)
     {
@@ -271,12 +276,6 @@ contract FlowSwap is IFlowSwap, SuperAppBase {
         newCtx = ctx;
         ISuperfluid.Context memory decompiledContext = host.decodeCtx(ctx);
         address sender = decompiledContext.msgSender;
-        (, int96 flowRate, , ) = cfaV1.cfa.getFlow(
-            ISuperToken(token),
-            sender,
-            address(this)
-        );
-
         swaps[sender].flowRate = 0;
     }
 
@@ -339,7 +338,7 @@ contract FlowSwap is IFlowSwap, SuperAppBase {
     function price0CumulativeNow() public view returns (uint256) {
         return
             price0CumulativeLast +
-            uint256(UQ112x112.encode(reserve1()).uqdiv(reserve0())) *
+            uint256(FixedPoint.encode(reserve1()).uqdiv(reserve0())) *
             (uint256(uint32(block.timestamp % 2**32)) -
                 uint256(blockTimestampLast));
     }
@@ -347,7 +346,7 @@ contract FlowSwap is IFlowSwap, SuperAppBase {
     function price1CumulativeNow() public view returns (uint256) {
         return
             price1CumulativeLast +
-            uint256(UQ112x112.encode(reserve0()).uqdiv(reserve1())) *
+            uint256(FixedPoint.encode(reserve0()).uqdiv(reserve1())) *
             (uint256(uint32(block.timestamp % 2**32)) -
                 uint256(blockTimestampLast));
     }
@@ -513,9 +512,7 @@ contract FlowSwap is IFlowSwap, SuperAppBase {
     ) external override onlyHost returns (bytes memory newCtx) {
         if (!_isPairToken(_superToken) || !_isCFAv1(_agreementClass))
             return _ctx;
-        (, int96 flowRate) = abi.decode(cbdata, (uint256, int96));
-
-        return terminate(_ctx, _superToken);
+        return terminate(_ctx);
     }
 
     /**************************************************************************
