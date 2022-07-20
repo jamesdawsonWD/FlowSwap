@@ -7,12 +7,35 @@ import '@nomiclabs/hardhat-web3';
 import chai from 'chai';
 import { solidity } from 'ethereum-waffle';
 chai.use(solidity);
+import 'dotenv/config';
 
-export default {
-    solidity: '0.8.13',
+module.exports = {
+    defaultNetwork: 'matic',
     networks: {
         hardhat: {
             chainId: 31337,
         },
+        matic: {
+            url: 'https://rpc-mumbai.maticvigil.com',
+            accounts: [process.env.PRIVATE_KEY],
+        },
     },
+    etherscan: {
+        apiKey: process.env.POLYGONSCAN_API_KEY,
+    },
+    solidity: {
+        version: '0.8.13',
+        settings: {
+            optimizer: {
+                enabled: true,
+                runs: 200,
+            },
+        },
+    },
+    // solidity: '0.8.13',
+    // networks: {
+    //     hardhat: {
+    //         chainId: 31337,
+    //     },
+    // },
 };

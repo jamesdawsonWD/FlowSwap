@@ -1,13 +1,12 @@
-
-$offset-white: #EEEEEE;
-$background-color: #222831;
-$first-shade: #393E46;
+$offset-white: #fdfafc;
+$background-color: #fdfeff;
+$first-shade: #161616;
 $second-shade: #d2d3db;
-$third-shade: #9394a5;
+$third-shade: #858585;
 $offset-main: #484b6a;
-$main: #FFD369;
+$main: #32f888;
 $second: #6cdebc;
-
+$error: #ff6d7a;
 
 :root {
     // RIGHT, will work in all Sass versions.
@@ -19,4 +18,5 @@ $second: #6cdebc;
     --third-shade: #{$third-shade};
     --background-color: #{$background-color};
     --offset-white: #{$offset-white};
+    --error: #{$error};
 }

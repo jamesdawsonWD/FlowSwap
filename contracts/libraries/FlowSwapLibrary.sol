@@ -1,7 +1,7 @@
 pragma solidity 0.8.13;
-import '../interfaces/IFlowSwap.sol';
+import '../interfaces/ISwirlPool.sol';
 
-library FlowSwapLibrary {
+library SwirlPoolLibrary {
     // returns sorted token addresses, used to handle return values from pairs sorted in this order
     function sortTokens(address tokenA, address tokenB)
         internal
@@ -45,7 +45,7 @@ library FlowSwapLibrary {
         address tokenB
     ) internal view returns (uint256 reserveA, uint256 reserveB) {
         (address token0, ) = sortTokens(tokenA, tokenB);
-        (uint256 reserve0, uint256 reserve1, ) = IFlowSwap(
+        (uint256 reserve0, uint256 reserve1, ) = ISwirlPool(
             pairFor(factory, tokenA, tokenB)
         ).getReserves();
         (reserveA, reserveB) = tokenA == token0

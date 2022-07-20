@@ -10,7 +10,8 @@
     "compile": "hardhat compile",
     "node": "hardhat node",
     "localhost": "hardhat run scripts/deploy.ts --network localhost",
-    "fork:mainnet": "hardhat node --fork process.env.ALCHEMY_HTTP",
+    "fork:polygon": "hardhat node --fork process.env.ALCHEMY_HTTP",
+    "deploy:mumbai": "npx hardhat run scripts/deploy.ts --network matic",
     "typechain": "hardhat typechain",
     "solhint": "solhint -f table contracts/**/*.sol"
   },
@@ -65,6 +66,7 @@
     "@uniswap/lib": "^4.0.1-alpha",
     "@uniswap/v3-core": "^1.0.1",
     "@uniswap/v3-periphery": "^1.4.1",
+    "dotenv": "^16.0.1",
     "graphql": "^16.5.0",
     "i": "^0.3.7",
     "npm": "^8.13.1"
