@@ -2,7 +2,7 @@
     <div class="swap-view">
         <Box class="swap-container">
             <div class="swap-component">
-                <h3>Swirl</h3>
+                <h3>Pool</h3>
                 <SelectAsset
                     :asset="(from as AssetInfo)"
                     label="from"

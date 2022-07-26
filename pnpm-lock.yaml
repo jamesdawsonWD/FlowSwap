@@ -5,9 +5,9 @@ dependencies:
   '@uniswap/v3-periphery': 1.4.1_hardhat@2.9.3
   dotenv: 16.0.1
   graphql: 16.5.0
-  i: 0.3.7
-  npm: 8.13.1
 devDependencies:
+  '@ethersproject/abi': 5.6.4
+  '@ethersproject/providers': 5.6.8
   '@nomiclabs/hardhat-ethers': 2.0.5_ethers@5.6.4+hardhat@2.9.3
   '@nomiclabs/hardhat-solhint': 2.0.0_hardhat@2.9.3
   '@nomiclabs/hardhat-truffle5': 2.0.6_3a071b52ab5b545eece7ee67fad644da
@@ -16,8 +16,8 @@ devDependencies:
   '@openzeppelin/contracts': 4.6.0
   '@superfluid-finance/sdk-core': 0.4.2_graphql@16.5.0+typescript@4.6.3
   '@tsconfig/node16': 1.0.2
-  '@typechain/ethers-v5': 10.0.0_a4a3c9abe01e8a7fce95fe834823d241
-  '@typechain/hardhat': 6.0.0_2132b6e2f0f10711adec99cab7e08005
+  '@typechain/ethers-v5': 10.0.0_00044b9424edd94ae4c06b28488a6c82
+  '@typechain/hardhat': 6.0.0_433d3919782f03744403c66e67cd0c06
   '@types/chai': 4.3.1
   '@types/mocha': 9.1.1
   '@types/node': 17.0.31
@@ -322,6 +322,20 @@ packages:
       '@ethersproject/strings': 5.6.1
     resolution:
       integrity: sha512-CxKTdoZY4zDJLWXG6HzNH6znWK0M79WzzxHegDoecE3+K32pzfHOzuXg2/oGSTecZynFgpkjYXNPOqXVJlqClw==
+  /@ethersproject/abi/5.6.4:
+    dependencies:
+      '@ethersproject/address': 5.6.1
+      '@ethersproject/bignumber': 5.6.2
+      '@ethersproject/bytes': 5.6.1
+      '@ethersproject/constants': 5.6.1
+      '@ethersproject/hash': 5.6.1
+      '@ethersproject/keccak256': 5.6.1
+      '@ethersproject/logger': 5.6.0
+      '@ethersproject/properties': 5.6.0
+      '@ethersproject/strings': 5.6.1
+    dev: true
+    resolution:
+      integrity: sha512-TTeZUlCeIHG6527/2goZA6gW5F8Emoc7MrZDC7hhP84aRGvW3TEdTnZR08Ls88YXM1m2SuK42Osw/jSi3uO8gg==
   /@ethersproject/abstract-provider/5.6.0:
     dependencies:
       '@ethersproject/bignumber': 5.6.0
@@ -338,7 +352,7 @@ packages:
       '@ethersproject/bignumber': 5.6.2
       '@ethersproject/bytes': 5.6.1
       '@ethersproject/logger': 5.6.0
-      '@ethersproject/networks': 5.6.3
+      '@ethersproject/networks': 5.6.4
       '@ethersproject/properties': 5.6.0
       '@ethersproject/transactions': 5.6.2
       '@ethersproject/web': 5.6.1
@@ -578,6 +592,11 @@ packages:
       '@ethersproject/logger': 5.6.0
     resolution:
       integrity: sha512-QZxRH7cA5Ut9TbXwZFiCyuPchdWi87ZtVNHWZd0R6YFgYtes2jQ3+bsslJ0WdyDe0i6QumqtoYqvY3rrQFRZOQ==
+  /@ethersproject/networks/5.6.4:
+    dependencies:
+      '@ethersproject/logger': 5.6.0
+    resolution:
+      integrity: sha512-KShHeHPahHI2UlWdtDMn2lJETcbtaJge4k7XSjDR9h79QTd6yQJmv6Cp2ZA4JdqWnhszAOLSuJEd9C0PRw7hSQ==
   /@ethersproject/pbkdf2/5.6.0:
     dependencies:
       '@ethersproject/bytes': 5.6.1
@@ -632,7 +651,7 @@ packages:
       '@ethersproject/constants': 5.6.1
       '@ethersproject/hash': 5.6.1
       '@ethersproject/logger': 5.6.0
-      '@ethersproject/networks': 5.6.3
+      '@ethersproject/networks': 5.6.4
       '@ethersproject/properties': 5.6.0
       '@ethersproject/random': 5.6.1
       '@ethersproject/rlp': 5.6.1
@@ -1303,8 +1322,10 @@ packages:
     dev: true
     resolution:
       integrity: sha512-eZxlbI8GZscaGS7kkc/trHTT5xgrjH3/1n2JDwusC9iahPKWMRvRjJSAN5mCXviuTGQ/lHnhvv8Q1YTpnfz9gA==
-  /@typechain/ethers-v5/10.0.0_a4a3c9abe01e8a7fce95fe834823d241:
+  /@typechain/ethers-v5/10.0.0_00044b9424edd94ae4c06b28488a6c82:
     dependencies:
+      '@ethersproject/abi': 5.6.4
+      '@ethersproject/providers': 5.6.8
       ethers: 5.6.4
       lodash: 4.17.21
       ts-essentials: 7.0.3_typescript@4.6.3
@@ -1329,9 +1350,11 @@ packages:
       typechain: ^3.0.0
     resolution:
       integrity: sha512-0xdCkyGOzdqh4h5JSf+zoWx85IusEjDcPIwNEHP8mrWSnCae4rvrqB+/gtpdNfX7zjlFlZiMeePn2r63EI3Lrw==
-  /@typechain/hardhat/6.0.0_2132b6e2f0f10711adec99cab7e08005:
+  /@typechain/hardhat/6.0.0_433d3919782f03744403c66e67cd0c06:
     dependencies:
-      '@typechain/ethers-v5': 10.0.0_a4a3c9abe01e8a7fce95fe834823d241
+      '@ethersproject/abi': 5.6.4
+      '@ethersproject/providers': 5.6.8
+      '@typechain/ethers-v5': 10.0.0_00044b9424edd94ae4c06b28488a6c82
       ethers: 5.6.4
       fs-extra: 9.1.0
       hardhat: 2.9.3
@@ -3882,7 +3905,7 @@ packages:
     dependencies:
       bn.js: 4.12.0
       brorand: 1.1.0
-      hash.js: 1.1.3
+      hash.js: 1.1.7
       hmac-drbg: 1.0.1
       inherits: 2.0.4
       minimalistic-assert: 1.0.1
@@ -5723,7 +5746,7 @@ packages:
       integrity: sha512-ReXxQSGQkODMUgHcWzVSnfDCDrL2HshOYgw3OlIYmfHeRzUPkfJTUIp95pK4CmbiNG2eMTOmNLpfCz9Zq7Cwmg==
   /hmac-drbg/1.0.1:
     dependencies:
-      hash.js: 1.1.3
+      hash.js: 1.1.7
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
     resolution:
@@ -5812,12 +5835,6 @@ packages:
     requiresBuild: true
     resolution:
       integrity: sha512-LCqqsB0PzJQ/AlCgfrfzRe3e3+NvmefAdKQhRYpxS4u6clblBoDdzzvHi8fmxKRzvMxPY/1WZWzomPZww0Anow==
-  /i/0.3.7:
-    dev: false
-    engines:
-      node: '>=0.4'
-    resolution:
-      integrity: sha512-FYz4wlXgkQwIPqhzC5TdNMLSE5+GS1IIDJZY/1ZiEPCT2S3COUVZeT5OW4BmW4r5LHLQuOosSwsvnroG9GR59Q==
   /iconv-lite/0.4.24:
     dependencies:
       safer-buffer: 2.1.2
@@ -7357,84 +7374,6 @@ packages:
       node: '>=8'
     resolution:
       integrity: sha512-9UZCFRHQdNrfTpGg8+1INIg93B6zE0aXMVFkw1WFwvO4SlZywU6aLg5Of0Ap/PgcbSw4LNxvMWXMeugwMCX0AA==
-  /npm/8.13.1:
-    bundledDependencies:
-      - '@isaacs/string-locale-compare'
-      - '@npmcli/arborist'
-      - '@npmcli/ci-detect'
-      - '@npmcli/config'
-      - '@npmcli/fs'
-      - '@npmcli/map-workspaces'
-      - '@npmcli/package-json'
-      - '@npmcli/run-script'
-      - abbrev
-      - archy
-      - cacache
-      - chalk
-      - chownr
-      - cli-columns
-      - cli-table3
-      - columnify
-      - fastest-levenshtein
-      - glob
-      - graceful-fs
-      - hosted-git-info
-      - ini
-      - init-package-json
-      - is-cidr
-      - json-parse-even-better-errors
-      - libnpmaccess
-      - libnpmdiff
-      - libnpmexec
-      - libnpmfund
-      - libnpmhook
-      - libnpmorg
-      - libnpmpack
-      - libnpmpublish
-      - libnpmsearch
-      - libnpmteam
-      - libnpmversion
-      - make-fetch-happen
-      - minipass
-      - minipass-pipeline
-      - mkdirp
-      - mkdirp-infer-owner
-      - ms
-      - node-gyp
-      - nopt
-      - npm-audit-report
-      - npm-install-checks
-      - npm-package-arg
-      - npm-pick-manifest
-      - npm-profile
-      - npm-registry-fetch
-      - npm-user-validate
-      - npmlog
-      - opener
-      - pacote
-      - parse-conflict-json
-      - proc-log
-      - qrcode-terminal
-      - read
-      - read-package-json
-      - read-package-json-fast
-      - readdir-scoped-modules
-      - rimraf
-      - semver
-      - ssri
-      - tar
-      - text-table
-      - tiny-relative-date
-      - treeverse
-      - validate-npm-package-name
-      - which
-      - write-file-atomic
-    dev: false
-    engines:
-      node: ^12.13.0 || ^14.15.0 || >=16
-    hasBin: true
-    resolution:
-      integrity: sha512-Di4hLSvlImxAslovZ8yRXOhwmd6hXzgRFjwfF4QuwuPT9RUvpLIZ5nubhrY34Pc3elqaU0iyBVWgGZ3jELFP8w==
   /nth-check/2.1.1:
     dependencies:
       boolbase: 1.0.0
@@ -11099,6 +11038,8 @@ packages:
       tarball: 'https://codeload.github.com/ethereumjs/ethereumjs-abi/tar.gz/ee3994657fa7a427238e6ba92a84d0b529bbcde0'
     version: 0.6.8
 specifiers:
+  '@ethersproject/abi': ^5.6.4
+  '@ethersproject/providers': ^5.6.8
   '@nomiclabs/hardhat-ethers': ^2.0.5
   '@nomiclabs/hardhat-solhint': ^2.0.0
   '@nomiclabs/hardhat-truffle5': ^2.0.6
@@ -11128,8 +11069,6 @@ specifiers:
   graphql: ^16.5.0
   hardhat: ^2.9.3
   husky: ^4.3.8
-  i: ^0.3.7
-  npm: ^8.13.1
   prettier: ^2.6.2
   prettier-plugin-solidity: ^1.0.0-beta.19
   ts-node: ^10.7.0

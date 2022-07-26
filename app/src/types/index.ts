@@ -1,43 +1,29 @@
 export type Address = string;
-
+export type GenericCallback = (a?: any, b?: any, c?: any) => void;
 export interface ISocialMedia {
     name: string;
     url: string;
-}
-export interface NFTs {
-    balance: {
-        [key: string]: NFT[];
-    };
-    tokens: {
-        [key: string]: NFT[];
-    };
-}
-
-export interface Project {
-    title: string;
-    url?: string;
-    description: string;
-    modal: ModalTypes;
-    twitter?: string;
-    github?: string;
-    image: string;
-}
-export interface NFT {
-    [key: string]: any;
-    result: any[];
 }
 
 export interface IModal {
     show: boolean;
     type: ModalTypes;
-    data?: Project;
+    data?: AssetInfo;
+    callback?: GenericCallback;
 }
 export enum ModalTypes {
-    ProjectInfo,
+    AssetList,
 }
 declare global {
     interface Window {
         ethereum: any;
         web3: any;
     }
+}
+
+
+export interface AssetInfo {
+    name: string;
+    symbol: string;
+    logo: string;
 }

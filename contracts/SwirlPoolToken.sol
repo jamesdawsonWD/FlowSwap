@@ -47,7 +47,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
     ERC777Helper.Operators internal _operators;
 
     // NOTE: for future compatibility, these are reserved solidity slots
-    // The sub-class of SuperToken solidity slot will start after _reserve22
+    // The sub-class of SwirlPoolToken solidity slot will start after _reserve22
     uint256 internal _reserve22;
     uint256 private _reserve23;
     uint256 private _reserve24;
@@ -83,14 +83,14 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
     function proxiableUUID() public pure override returns (bytes32) {
         return
             keccak256(
-                'org.superfluid-finance.contracts.SuperToken.implementation'
+                'org.swirlpool-finance.contracts.SwirlPoolToken.implementation'
             );
     }
 
     function updateCode(address newAddress) external override {
         require(
             msg.sender == address(_host),
-            'SuperToken: only host can update code'
+            'SwirlPoolToken: only host can update code'
         );
         UUPSProxiable._updateCodeAddress(newAddress);
     }
@@ -129,10 +129,10 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
         address recipient,
         uint256 amount
     ) internal returns (bool) {
-        require(holder != address(0), 'SuperToken: transfer from zero address');
+        require(holder != address(0), 'SwirlPoolToken: transfer from zero address');
         require(
             recipient != address(0),
-            'SuperToken: transfer to zero address'
+            'SwirlPoolToken: transfer to zero address'
         );
 
         address operator = msg.sender;
@@ -145,7 +145,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
                 spender,
                 _allowances[holder][spender].sub(
                     amount,
-                    'SuperToken: transfer amount exceeds allowance'
+                    'SwirlPoolToken: transfer amount exceeds allowance'
                 )
             );
         }
@@ -172,8 +172,8 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
         bytes memory operatorData,
         bool requireReceptionAck
     ) private {
-        require(from != address(0), 'SuperToken: transfer from zero address');
-        require(to != address(0), 'SuperToken: transfer to zero address');
+        require(from != address(0), 'SwirlPoolToken: transfer from zero address');
+        require(to != address(0), 'SwirlPoolToken: transfer to zero address');
 
         _callTokensToSend(operator, from, to, amount, userData, operatorData);
 
@@ -213,7 +213,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
      *
      * See {IERC777Sender} and {IERC777Recipient}.
      *
-     * Emits {Minted} and {ISuperToken-Transfer} events.
+     * Emits {Minted} and {ISwirlPoolToken-Transfer} events.
      *
      * Requirements
      *
@@ -229,7 +229,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
         bytes memory userData,
         bytes memory operatorData
     ) internal {
-        require(account != address(0), 'SuperToken: mint to zero address');
+        require(account != address(0), 'SwirlPoolToken: mint to zero address');
 
         SwirlToken._mint(account, amount);
 
@@ -261,7 +261,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
         bytes memory userData,
         bytes memory operatorData
     ) internal {
-        require(from != address(0), 'SuperToken: burn from zero address');
+        require(from != address(0), 'SwirlPoolToken: burn from zero address');
 
         _callTokensToSend(
             operator,
@@ -296,8 +296,8 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
         address spender,
         uint256 amount
     ) internal {
-        require(account != address(0), 'SuperToken: approve from zero address');
-        require(spender != address(0), 'SuperToken: approve to zero address');
+        require(account != address(0), 'SwirlPoolToken: approve from zero address');
+        require(spender != address(0), 'SwirlPoolToken: approve to zero address');
 
         _allowances[account][spender] = amount;
         emit Approval(account, spender, amount);
@@ -376,7 +376,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
         } else if (requireReceptionAck) {
             require(
                 !to.isContract(),
-                'SuperToken: not an ERC777TokensRecipient'
+                'SwirlPoolToken: not an ERC777TokensRecipient'
             );
         }
     }
@@ -457,7 +457,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
             spender,
             _allowances[msg.sender][spender].sub(
                 subtractedValue,
-                'SuperToken: decreased allowance below zero'
+                'SwirlPoolToken: decreased allowance below zero'
             )
         );
         return true;
@@ -527,7 +527,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
         address operator = msg.sender;
         require(
             _operators.isOperatorFor(operator, sender),
-            'SuperToken: caller is not an operator for holder'
+            'SwirlPoolToken: caller is not an operator for holder'
         );
         _send(operator, sender, recipient, amount, data, operatorData, true);
     }
@@ -541,7 +541,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
         address operator = msg.sender;
         require(
             _operators.isOperatorFor(operator, account),
-            'SuperToken: caller is not an operator for holder'
+            'SwirlPoolToken: caller is not an operator for holder'
         );
         // _downgrade(operator, account, amount, data, operatorData);
     }
@@ -551,7 +551,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
     }
 
     /**************************************************************************
-     * SuperToken custom token functions
+     * SwirlPoolToken custom token functions
      *************************************************************************/
 
     function selfMint(
@@ -595,7 +595,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
     }
 
     /**************************************************************************
-     * SuperToken extra functions
+     * SwirlPoolToken extra functions
      *************************************************************************/
 
     function transferAll(address recipient) external override {
@@ -644,7 +644,7 @@ contract SwirlPoolToken is UUPSProxiable, SwirlToken, ISwirlPoolToken {
      *************************************************************************/
 
     modifier onlySelf() {
-        require(msg.sender == address(this), 'SuperToken: only self allowed');
+        require(msg.sender == address(this), 'SwirlPoolToken: only self allowed');
         _;
     }
 }

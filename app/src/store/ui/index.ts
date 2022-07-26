@@ -1,11 +1,11 @@
-import { IModal, ModalTypes, Project } from '@/types';
+import { AssetInfo, GenericCallback, IModal, ModalTypes } from '@/types';
 import { defineStore } from 'pinia';
 
 export const useUi = defineStore('ui', {
     state: () => ({
         modalState: {
             show: false,
-            type: ModalTypes.ProjectInfo,
+            type: ModalTypes.AssetList,
         },
         transition: {
             show: false,
@@ -33,7 +33,7 @@ export const useUi = defineStore('ui', {
         closeModal(): void {
             const modal = {
                 show: false,
-                type: ModalTypes.ProjectInfo,
+                type: ModalTypes.AssetList,
             };
             this.modalState = modal;
         },
@@ -49,11 +49,16 @@ export const useUi = defineStore('ui', {
             };
             this.transition = transition;
         },
-        openModal(type: ModalTypes, data?: Project): void {
+        openModal(
+            type: ModalTypes,
+            callback?: GenericCallback,
+            data?: AssetInfo
+        ): void {
             const modal: IModal = {
                 show: true,
                 type,
                 data,
+                callback,
             };
             this.modalState = modal;
         },

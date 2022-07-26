@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import Button from '@/components/generics/Button.vue';
+import VerticleButtonMenu from '@/components/generics/VerticleButtonMenu.vue';
 import makeBlockie from 'ethereum-blockies-base64';
 import router from '@/router';
 import { Address } from '@/types';
@@ -7,14 +8,25 @@ import { addressZero, shortAddress } from '@/utils';
 import { useConnectWallet } from '@/hooks/network/useConnectWallet';
 import { useUi } from '@/store/ui';
 import { useUserStore } from '@/store/user';
+import { ref } from 'vue';
 const ui = useUi();
 const user = useUserStore();
 const { connect } = useConnectWallet();
+const titles = ['Swirl', 'Pool', 'Streams'];
+const selected = ref('');
+
 function blockie(address: Address) {
     return makeBlockie(address);
 }
 function navigateHome(): void {
     router.push({ path: `/` });
+}
+function handleNavigation(path: string) {
+    if (path == 'Swirl') navigateHome();
+    else {
+        router.push({ path: `/${path.toLowerCase()}` });
+    }
+    selected.value = path;
 }
 function searchCollection(address: Address): void {
     router.push({ path: `/nft/${address}` });
@@ -27,6 +39,12 @@ function searchCollection(address: Address): void {
             <div class="logo-container">
                 <a @click.prevent="navigateHome()"><h2>SwirlPool</h2></a>
             </div>
+            <VerticleButtonMenu
+                :titles="titles"
+                :selected="selected"
+                class="menu"
+                @selected="handleNavigation($event)"
+            />
             <div class="nav">
                 <a
                     class="social-media"
@@ -51,12 +69,17 @@ function searchCollection(address: Address): void {
                     />
                 </a>
 
-                <Button title="Connect" v-if="!ui.getIsConnected" @clicked="connect()"/>
+                <Button
+                    title="Connect"
+                    v-if="!ui.getIsConnected"
+                    @clicked="connect()"
+                    button-style="lg-lobster-dark"
+                />
                 <a
                     v-else
                     class="ens-domain"
                     href="https://app.ens.domains/name/jimjam.eth/details"
-                    ><h4 class="ens">{{shortAddress(user.getAddress)}}</h4>
+                    ><h4 class="ens">{{ shortAddress(user.getAddress) }}</h4>
                     <img
                         :class="ui.getTransition ? 'opacity-0' : ''"
                         class="blockie"
@@ -83,6 +106,15 @@ function searchCollection(address: Address): void {
     top: 0;
     width: 100vw;
     z-index: 20000;
+
+    .verticle-button-menu {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        margin: auto;
+    }
     .dark-mode {
         .logo-container a h2 {
             color: var(--background-color);
@@ -151,7 +183,8 @@ function searchCollection(address: Address): void {
     }
 
     h2 {
-        font-size: 26pt;
+        font-size: 28pt;
+        @include Lobster_Bold;
     }
     @include breakpoint(mobileonly) {
         .content {
@@ -206,7 +239,7 @@ function searchCollection(address: Address): void {
         .content {
             .logo-container {
                 h2 {
-                    font-size: 30pt;
+                    font-size: 35pt;
                 }
             }
             .nav .social-media {

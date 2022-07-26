@@ -3,7 +3,7 @@ import { ref, watchEffect } from "vue";
 import { useUi } from "@/store/ui";
 import { IModal, ModalTypes } from "@/types";
 import type { Ref } from "vue";
-import ProjectInfo from "./ProjectInfo.vue";
+import AssetList from "./AssetList.vue";
 const container: Ref<HTMLElement | null> = ref(null);
 const html = document.documentElement;
 const ui = useUi();
@@ -15,7 +15,6 @@ function checkClick(event: MouseEvent) {
     y: event.y,
   };
   if (mousePos.x == 0 && mousePos.y == 0) return;
-  if (modal.value.content == "connectWallet") return;
   if (
     mousePos.x <= modalRect.x ||
     mousePos.x >= modalRect.x + modalRect.width ||
@@ -39,8 +38,9 @@ watchEffect(() => {
     <div class="modal-mask" @mousedown="checkClick">
       <div class="modal-wrapper">
         <div class="modal-container" ref="container">
-          <ProjectInfo
-            v-if="modal.type == ModalTypes.ProjectInfo"
+          <AssetList
+            v-if="modal.type == ModalTypes.AssetList"
+            :callback="modal.callback"
             :info="modal.data"
           />
         </div>
@@ -84,24 +84,6 @@ watchEffect(() => {
   height: 100%;
 }
 .modal-container {
-  min-width: 300px;
-  @include breakpoint(mobileonly) {
-    width: 80vw;
-  }
-  @include breakpoint(tablet) {
-    width: 80vw;
-  }
-  @include breakpoint(phablet) {
-    width: 60vw;
-  }
-
-  @include breakpoint(laptop) {
-    width: 60vw;
-  }
-  @include breakpoint(desktop) {
-    width: 60vw;
-  }
-  width: 60vw;
   height: 80vh;
   background-color: var(--first-shade);
   border-radius: 2px;
