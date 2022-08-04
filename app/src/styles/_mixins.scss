@@ -2,6 +2,10 @@
     -webkit-box-shadow: 6px 8px 15px -7px rgb(30, 30, 30);
     box-shadow: 6px 8px 15px -7px rgb(30, 30, 30);
 }
+
+@mixin border-radius {
+    border-radius: 12px;
+}
 @mixin breakpoint($point) {
     @if $point==desktop {
         @media (min-width: 85em) {
@@ -24,4 +28,13 @@
             @content;
         }
     }
+}
+
+@mixin list-item {
+    padding: 15px;
+    height: 50px;
+    width: 100%;
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
 }

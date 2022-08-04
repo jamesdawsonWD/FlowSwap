@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { useUserStore } from '@/store/user';
 import { useUi } from '@/store/ui';
 import { addressZero, shortAddress } from '@/utils';
+import { useSwirlPool } from '../swirlPool/useSwirlPool';
 
 export function useConnectWallet() {
     const data = ref(null);
@@ -10,7 +11,6 @@ export function useConnectWallet() {
     const address = ref('');
     const userStore = useUserStore();
     const ui = useUi();
-
     const connect = async () => {
         try {
             const provider = new ethers.providers.Web3Provider(
@@ -31,6 +31,9 @@ export function useConnectWallet() {
             });
 
             userStore.setAddress(address.value);
+            userStore.setSigner(signer);
+            userStore.setProvider(provider);
+
             ui.setConnected(true);
         } catch (err: any) {
             // todo handle errors
@@ -42,6 +45,7 @@ export function useConnectWallet() {
         console.log(address, accounts);
     };
     const onAccountChanged = (address: string, accounts: string[]) => {
+        console.log('her');
         if (accounts.length == 0) {
             userStore.setAddress(addressZero);
             ui.setConnected(false);

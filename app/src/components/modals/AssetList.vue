@@ -72,18 +72,12 @@ const assetSelected = (asset: AssetInfo) => {
     }
 
     .asset {
-        padding: 15px;
-        height: 50px;
-        width: 100%;
-        display: flex;
-        justify-content: flex-start;
-        align-items: center;
+        @include list-item;
 
         &:hover {
             background: var(--third-shade);
             cursor: pointer;
         }
-
         .details {
             height: 100%;
             display: flex;

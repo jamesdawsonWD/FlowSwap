@@ -1,113 +1,34 @@
 <template>
-    <div class="swap-view">
+    <div class="pool">
         <Box class="swap-container">
-            <div class="swap-component">
-                <h3>Pool</h3>
-                <SelectAsset
-                    :asset="(from as AssetInfo)"
-                    label="from"
-                    v-model="amount0"
-                    @asset-selected="updateFrom($event)"
-                />
-                <img
-                    v-svg-inline
-                    class="icon"
-                    src="@/assets/svg/down-arrow.svg"
-                    alt="Down Caret"
-                />
-                <SelectAsset
-                    :asset="(to as AssetInfo)"
-                    label="to"
-                    v-model="amount1"
-                    @asset-selected="updateTo($event)"
-                />
-                <div class="time-frame">
-                    <h4>Time Frame</h4>
-                    <div class="button-list">
-                        <Button
-                            title="per hour"
-                            @clicked="timeFrame = 'hour'"
-                            :button-style="
-                                timeFrame == 'hour'
-                                    ? 'sm-basic-dark'
-                                    : 'sm-basic-light'
-                            "
-                        />
-                        <Button
-                            title="per day"
-                            @clicked="timeFrame = 'day'"
-                            :button-style="
-                                timeFrame == 'day'
-                                    ? 'sm-basic-dark'
-                                    : 'sm-basic-light'
-                            "
-                        />
-                        <Button
-                            title="per week"
-                            @clicked="timeFrame = 'week'"
-                            :button-style="
-                                timeFrame == 'week'
-                                    ? 'sm-basic-dark'
-                                    : 'sm-basic-light'
-                            "
-                        />
-                        <Button
-                            title="per month"
-                            @clicked="timeFrame = 'month'"
-                            :button-style="
-                                timeFrame == 'month'
-                                    ? 'sm-basic-dark'
-                                    : 'sm-basic-light'
-                            "
-                        />
-                    </div>
-                </div>
-                <Button title="Swirl" class="submit" />
-            </div>
+            <PoolsOverview
+                v-if="showOverview"
+                @new-position="toggleShowOverview()"
+            />
+            <PoolsNewPosition @back-selected="toggleShowOverview()" v-else />
         </Box>
     </div>
 </template>
 
 <script setup lang="ts">
-import SelectAsset from '@/components/generics/SelectAsset.vue';
+import PoolsOverview from '@/components/views/PoolsOverview.vue';
+import PoolsNewPosition from '@/components/views/PoolsNewPosition.vue';
 import Box from '@/components/generics/Box.vue';
 import Button from '@/components/generics/Button.vue';
 import { Ref, ref, watch } from 'vue';
 import { AssetInfo, ModalTypes } from '@/types';
 
-const from: Ref<AssetInfo | null> = ref(null);
-const amount0 = ref('');
-const amount1 = ref('');
-const timeFrame = ref('hour');
-const to: Ref<AssetInfo | null> = ref(null);
+const showOverview = ref(true);
 
-from.value = {
-    name: 'fUSDCx',
-    symbol: 'fUSDCx',
-    logo: 'usdc.svg',
+const toggleShowOverview = () => {
+    console.log('here');
+    showOverview.value = !showOverview.value;
 };
-
-to.value = {
-    name: 'fMATIC',
-    symbol: 'fMATIC',
-    logo: 'usdc.svg',
-};
-const updateFrom = (asset: AssetInfo) => {
-    from.value = asset;
-};
-const updateTo = (asset: AssetInfo) => {
-    to.value = asset;
-};
-watch(amount0, (value) => {
-    console.log(value);
-});
 </script>
 <style lang="scss">
 @import '@/styles';
 
-.swap-view {
-    height: 100vh;
-    width: 100vw;
+.pool {
     display: flex;
     justify-content: center;
     align-items: center;
@@ -140,18 +61,6 @@ watch(amount0, (value) => {
                     margin-right: 20px;
                 }
             }
-        }
-        img {
-            max-width: 100%;
-            max-height: 100%;
-        }
-
-        .submit {
-            margin-top: 50px;
-        }
-
-        .icon {
-            margin-top: 10px;
         }
     }
 }

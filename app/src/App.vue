@@ -6,10 +6,10 @@
     >
         <Spiral class="canvas" />
         <Header :class="ui.getIsModalAwake ? 'blur' : ''" />
-        <div class="router-wrapper">
+        <div class="router-wrapper" >
             <router-view
                 class="router"
-                :class="ui.getIsModalAwake ? 'blur' : ''"
+                
             />
         </div>
         <transition name="fade" mode="out-in">
@@ -26,6 +26,7 @@ import Spiral from '@/components/canvas/Spiral.vue';
 import Header from '@/components/Header.vue';
 import VerticleBox from '@/components/transitions/VerticleBox.vue';
 import { useUi } from '@/store/ui';
+import { useSwirlPool } from './hooks/swirlPool/useSwirlPool';
 const ui = useUi();
 </script>
 
@@ -51,8 +52,10 @@ const ui = useUi();
 .router-wrapper {
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     width: 100%;
+    padding-top: 20em;
+    height: 100vh;
 }
 .blur {
     filter: blur(8px);

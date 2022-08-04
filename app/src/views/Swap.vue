@@ -11,7 +11,7 @@
                 />
                 <img
                     v-svg-inline
-                    class="icon"
+                    class="icon down-arrow"
                     src="@/assets/svg/down-arrow.svg"
                     alt="Down Caret"
                 />
@@ -106,8 +106,6 @@ watch(amount0, (value) => {
 @import '@/styles';
 
 .swap-view {
-    height: 100vh;
-    width: 100vw;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -115,6 +113,9 @@ watch(amount0, (value) => {
     .swap-container {
         position: relative;
         z-index: 101;
+    }
+    .down-arrow {
+        margin-top: 10px;
     }
     .swap-component {
         position: relative;
@@ -127,6 +128,7 @@ watch(amount0, (value) => {
         align-items: center;
         border-radius: 12px;
         background: var(--background-color);
+
         .time-frame {
             width: 100%;
             display: flex;
@@ -148,10 +150,6 @@ watch(amount0, (value) => {
 
         .submit {
             margin-top: 50px;
-        }
-
-        .icon {
-            margin-top: 10px;
         }
     }
 }

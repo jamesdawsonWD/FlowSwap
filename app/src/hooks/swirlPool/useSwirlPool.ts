@@ -2,12 +2,17 @@ import { BigNumberish, ethers } from 'ethers';
 import addresses from '@/contracts/contract-address.json';
 import { SwirlPool__factory, SwirlPool } from '../../../../typechain-types';
 import { Address } from '@/types';
-export function useSwirlPool(signer: ethers.Signer) {
+import { Ref, watchEffect } from 'vue';
+export function useSwirlPool(provider: Ref<ethers.providers.Web3Provider>) {
     let swirlPool: SwirlPool;
 
-    const setup = async () => {
+    const setup = async (provider: ethers.providers.Web3Provider) => {
+        console.log(provider);
         if (!swirlPool)
-            swirlPool = SwirlPool__factory.connect(addresses.SwirlPool, signer);
+            swirlPool = SwirlPool__factory.connect(
+                addresses.SwirlPool,
+                provider
+            );
     };
 
     const mint = async (
@@ -93,6 +98,8 @@ export function useSwirlPool(signer: ethers.Signer) {
             console.log(err);
         }
     };
+
+    watchEffect(() => setup(provider.value));
 
     return {
         setup,

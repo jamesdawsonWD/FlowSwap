@@ -34,13 +34,13 @@ const props = defineProps<{ title: string; buttonStyle: string }>();
     padding: 15px;
     border-radius: 12px;
     transition: 0.2s;
-    width: 100%;
     font-weight: 700;
     outline: none;
     &:hover {
         cursor: pointer;
     }
 }
+
 
 .sm-basic-dark {
     background: var(--third-shade);
